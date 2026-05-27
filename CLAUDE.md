@@ -6,6 +6,7 @@
 
 **IlliniHunt V2** - Product Hunt for University of Illinois
 **Live**: https://illinihunt.org (Cloudflare CDN) | https://illinihunt.vercel.app
+**Repo**: https://github.com/gies-ai-experiments/illinihunt
 **Supabase Project**: `catzwowmxluzwbhdyhnf`
 **Stack**: React 18 + TypeScript + Supabase + Vercel + Cloudflare CDN
 
@@ -52,12 +53,11 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
   - See: [Cloudflare + Vercel Issues](#cloudflare--vercel-issues) below
 
 ## Current Focus
+- [ ] Azure migration in progress — spec in `azure-migration` branch, issue #93 assigned to Keshav (keshavdalmia10). Blocked on: UIUC IT Entra app registration approval; decision on preserving existing user history vs fresh start.
 - [ ] Complete remaining Supabase Security Advisor items: dashboard toggles (HIBP password check, OTP expiry <1h), Postgres patch upgrade
 - [ ] Secrets rotation (PAT → DB password → JWT → API keys → edge secrets → regen types → verify) — schedule for quiet window since JWT rotation logs out all users
-- [ ] Watch Sentry funnel data 24–48h post-#91/#92 to confirm whether stuck-submission cohort (aflasck2, calk2, critter4, mjdiaz3) completes — or root-cause via the new image-picked / submit-attempt-validated drop-off
-- [ ] Remove the troubleshooting banner (PR #92) once funnel data is clean for 48h
+- [ ] Remove the troubleshooting banner (PR #92) once Sentry funnel data is clean for 48h
 - [ ] Testing framework
-- [ ] Accessibility + regression test coverage for new collection flows
 
 ## Roadmap
 - [x] Search & filtering system
@@ -68,9 +68,9 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
 - [ ] See: [Improvement Roadmap](docs/IMPROVEMENT_ROADMAP.md) for full details
 
 ## Session Log
-### 2026-05-20
-- Completed: Full Supabase Security Advisor sweep. **4 migrations** (`20260508000001`–`000004`): (1) enabled RLS on `public.comments` (policies existed but were inert — table was wide open); (2) flipped `user_bookmarks_with_projects` and `public_collections_with_stats` from SECURITY DEFINER → `security_invoker=true`; (3) pinned `search_path` on all 29 public functions via PL/pgSQL DO block with `to_regprocedure` guards (Codex P1 catch — original static ALTERs would fail `supabase db reset` on functions created via dashboard); (4) revoked EXECUTE from PUBLIC across the board (Codex P2 — without this, anon/auth inherit via PUBLIC even after explicit revokes), then re-granted per triage: trigger-only fns revoked from all client roles, admin/user RPCs `authenticated`-only, RLS helpers + stats kept on `anon, authenticated`; (5) dropped overly broad SELECT policy on `storage.objects` for `project-images` (CDN URL path bypasses RLS, so listing capability was unnecessary); (6) tightened `bookmarks` SELECT to `auth.uid() = user_id` and deduped two pairs of identical INSERT/DELETE policies (privacy leak — `qual=true` allowed any client to enumerate all users' bookmarks; all call sites already scope by user). Final advisor: **0 ERRORs, 28 WARNs** (25 accepted-risk SECURITY DEFINER helpers + 3 dashboard tasks). Also: customized `~/.claude/statusline-command.sh` to show `last <commit-age> session <YYYY-MM-DD>` (answers "when did I last work on this project" without leaving the bar). Saved memory: use `/codex-review` skill, not `codex:rescue` subagent (gets stuck on this project).
-- Next: Dashboard tasks (enable HIBP password check, OTP expiry <1h, Postgres patch upgrade — all 1-click). Then 7-step secrets rotation in a quiet window (JWT rotation logs out every signed-in user). Drift to investigate: live `project_upvotes_count_trigger` points at `update_project_upvotes_count` but migration `20250814154600` says it should be `_robust` variant — either migration was reverted via dashboard or function renamed. Older carry-overs still open: (a) move `illinihunt-reverse-proxy` Worker source into a tracked repo with `wrangler deploy`; (b) recreate or roll `cf-illinihunt-zone-and-pages` token to clear phantom IP filter blocking CI `wrangler pages deploy`; (c) delete orphan `ZZ-orphan-never-used-DELETE` token.
+### 2026-05-27
+- Completed: Designed and specced full Azure migration (UIUC IT compliance — all student data must move to Azure). Approach: Express API on Azure Container Apps + Azure PostgreSQL Flexible Server + Azure Blob Storage + Entra ID (MSAL) auth; frontend stays on Vercel. Spec written to `docs/superpowers/specs/2026-05-26-azure-migration-design.md` on `azure-migration` branch. Repo transferred from `vishalsachdev/illinihunt` → `gies-ai-experiments/illinihunt`; Vercel reconnected; local remote updated. GitHub issue #93 created and assigned to Keshav (keshavdalmia10).
+- Next: Keshav to start Phase 1 (Azure infra setup) once UIUC IT approves Entra app registration. Decide whether to preserve existing user history (re-key Supabase UUIDs → Entra OIDs) before Phase 2 starts.
 
 *Older entries archived to `docs/session-archive.md`.*
 
