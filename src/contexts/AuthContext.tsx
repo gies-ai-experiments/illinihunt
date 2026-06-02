@@ -1,17 +1,38 @@
-import { createContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react'
-import { User, Session, type PostgrestError } from '@supabase/supabase-js'
+import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { z } from 'zod'
-import { supabase } from '@/lib/supabase'
+import {
+  PublicClientApplication,
+  type AccountInfo,
+  type AuthenticationResult,
+  EventType,
+  InteractionRequiredAuthError,
+} from '@azure/msal-browser'
+import { MsalProvider } from '@azure/msal-react'
+
 import { ILLINOIS_DOMAIN } from '@/lib/constants'
 import type { Database } from '@/types/database'
+import { msalConfig, apiScopes } from '@/lib/msal-config'
+import { configureApi, apiJson, ApiError } from '@/lib/api'
 
-// Type for user profile from database
 type UserProfile = Database['public']['Tables']['users']['Row']
 
+// Minimal user shape exposed to consumers. id = public.users.id (NOT Entra oid).
+// Email is always lowercased.
+export interface AuthUser {
+  id: string
+  email: string
+  name?: string
+}
+
+// Lightweight "session" stand-in (MSAL manages real tokens internally).
+export interface AuthSession {
+  account: AccountInfo
+}
+
 interface AuthState {
-  user: User | null
+  user: AuthUser | null
   profile: UserProfile | null
-  session: Session | null
+  session: AuthSession | null
   loading: boolean
   error: string | null
   signInWithGoogle: () => Promise<void>
@@ -23,54 +44,73 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined)
 
-// Simple localStorage based profile cache
-const PROFILE_CACHE_KEY = 'illinihunt-profile'
-const PROFILE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+// Singleton MSAL instance — created once, shared everywhere.
+const msalInstance = new PublicClientApplication(msalConfig)
 
-const AUTH_CHECK_TIMEOUT = 5000
-const MAX_PROFILE_RETRIES = 3
-const PROFILE_RETRY_BASE_DELAY = 500
-const POSTGRES_UNIQUE_VIOLATION = '23505'
+// Initialize MSAL (required since msal-browser v3). Idempotent.
+// We also process any pending redirect response here — this is what completes
+// the login flow when the user returns from the Microsoft sign-in page.
+const msalInitPromise = msalInstance
+  .initialize()
+  .then(() => {
+    console.log('[msal] initialize complete, processing redirect...')
+    return msalInstance.handleRedirectPromise()
+  })
+  .then((result) => {
+    if (result?.account) {
+      console.log('[msal] redirect produced account:', result.account.username)
+      msalInstance.setActiveAccount(result.account)
+    } else {
+      const accounts = msalInstance.getAllAccounts()
+      console.log('[msal] no redirect result; cached accounts:', accounts.length)
+      if (accounts.length > 0 && !msalInstance.getActiveAccount()) {
+        msalInstance.setActiveAccount(accounts[0]!)
+      }
+    }
+    const active = msalInstance.getActiveAccount()
+    console.log('[msal] active account after init:', active?.username ?? '(none)')
+  })
+  .catch((err) => {
+    console.error('[msal] init/redirect handling failed', err)
+  })
+
+const PROFILE_CACHE_KEY = 'illinihunt-profile'
+const PROFILE_CACHE_TTL = 5 * 60 * 1000
 
 const CachedProfileSchema = z.object({
-  profile: z.object({
-    id: z.string(),
-    email: z.string()
-  }).passthrough(),
-  timestamp: z.number()
+  profile: z.object({ id: z.string(), email: z.string() }).passthrough(),
+  timestamp: z.number(),
 })
 
-function isValidIllinoisEmail(email: string | undefined) {
+function isValidIllinoisEmail(email: string | undefined): boolean {
   return !!email && email.toLowerCase().endsWith(`@${ILLINOIS_DOMAIN}`)
 }
-
-type CachedProfile = { profile: UserProfile; timestamp: number }
 
 function getCachedProfile(): UserProfile | null {
   if (typeof window === 'undefined') return null
   const cached = window.localStorage.getItem(PROFILE_CACHE_KEY)
   if (!cached) return null
   try {
-    const parsedResult = CachedProfileSchema.safeParse(JSON.parse(cached))
+    const parsed = CachedProfileSchema.safeParse(JSON.parse(cached))
     if (
-      parsedResult.success &&
-      Date.now() - parsedResult.data.timestamp < PROFILE_CACHE_TTL &&
-      isValidIllinoisEmail(parsedResult.data.profile.email)
+      parsed.success &&
+      Date.now() - parsed.data.timestamp < PROFILE_CACHE_TTL &&
+      isValidIllinoisEmail(parsed.data.profile.email)
     ) {
-      return parsedResult.data.profile as UserProfile
+      return parsed.data.profile as UserProfile
     }
   } catch (e) {
-    if (import.meta.env.DEV) {
-      console.error('Failed to parse cached profile', e)
-    }
+    if (import.meta.env.DEV) console.error('Failed to parse cached profile', e)
   }
   return null
 }
 
 function setCachedProfile(profile: UserProfile) {
   if (typeof window === 'undefined') return
-  const cached: CachedProfile = { profile, timestamp: Date.now() }
-  window.localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(cached))
+  window.localStorage.setItem(
+    PROFILE_CACHE_KEY,
+    JSON.stringify({ profile, timestamp: Date.now() }),
+  )
 }
 
 function clearCachedProfile() {
@@ -78,354 +118,226 @@ function clearCachedProfile() {
   window.localStorage.removeItem(PROFILE_CACHE_KEY)
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<Omit<AuthState, 'signInWithGoogle' | 'signInWithEmail' | 'signOut' | 'refreshProfile' | 'retryAuth'>>({
+function accountToUser(account: AccountInfo, profileId?: string): AuthUser | null {
+  const email = (account.username ?? '').toLowerCase()
+  if (!email) return null
+  return {
+    id: profileId ?? account.localAccountId, // pre-sync we use Entra oid as a placeholder
+    email,
+    name: account.name ?? undefined,
+  }
+}
+
+function AuthProviderInner({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<
+    Omit<AuthState, 'signInWithGoogle' | 'signInWithEmail' | 'signOut' | 'refreshProfile' | 'retryAuth'>
+  >({
     user: null,
     profile: null,
     session: null,
     loading: true,
-    error: null
+    error: null,
   })
 
   const mountedRef = useRef(true)
-  const loadingRef = useRef(state.loading)
-  const profileLoadingRef = useRef(false)
 
-  useEffect(() => {
-    loadingRef.current = state.loading
-  }, [state.loading])
-
-  const loadUserProfile = useCallback(async (user: User, force = false) => {
-    if (profileLoadingRef.current && !force) return
-    profileLoadingRef.current = true
-
-    try {
-      const cached = !force ? getCachedProfile() : null
-      if (cached) {
-        // Always recheck suspension status from DB — cache could be stale
-        const { data: freshCheck } = await supabase
-          .from('users')
-          .select('suspended_at')
-          .eq('id', user.id)
-          .single()
-
-        if (freshCheck?.suspended_at) {
-          clearCachedProfile()
-          await supabase.auth.signOut()
-          if (mountedRef.current) {
-            setState({
-              user: null,
-              profile: null,
-              session: null,
-              loading: false,
-              error: 'Your account has been suspended. Contact an administrator.'
-            })
-          }
-          return
-        }
-
-        setState(prev => ({ ...prev, profile: cached, error: null, loading: false }))
-        return
-      }
-
-      if (!isValidIllinoisEmail(user.email)) {
-        await supabase.auth.signOut()
-        if (mountedRef.current) {
-          setState({
-            user: null,
-            profile: null,
-            session: null,
-            loading: false,
-            error: `Only @${ILLINOIS_DOMAIN} email addresses are allowed`
-          })
-        }
-        return
-      }
-
-      let retries = 0
-      let data: UserProfile | null = null
-      let error: PostgrestError | null = null
-      while (retries < MAX_PROFILE_RETRIES) {
-        const response = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-        data = response.data as UserProfile | null
-        error = response.error
-        if (!error || (error.code !== 'ECONNRESET' && error.code !== 'ETIMEDOUT')) {
-          break
-        }
-        retries++
-        await new Promise(res => setTimeout(res, PROFILE_RETRY_BASE_DELAY * 2 ** retries))
-      }
-
-      if (!mountedRef.current) return
-
-      if (error && error.code === 'PGRST116') {
-        const newProfile = {
-          id: user.id,
-          email: user.email!,
-          full_name: user.user_metadata.full_name || '',
-          avatar_url: user.user_metadata.avatar_url || '',
-          username: user.email!.split('@')[0]
-        }
-
-        const { data: createdProfile, error: createError } = await supabase
-          .from('users')
-          .insert(newProfile)
-          .select()
-          .single()
-
-        if (createError) {
-          // Race condition: another concurrent call (e.g. onAuthStateChange SIGNED_IN
-          // firing alongside restoreSession) already inserted the profile.
-          // Fetch the existing row instead of surfacing an error.
-          if (createError.code === POSTGRES_UNIQUE_VIOLATION) {
-            const { data: existingProfile, error: fetchError } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', user.id)
-              .single()
-
-            if (!mountedRef.current) return
-
-            if (fetchError || !existingProfile) {
-              setState(prev => ({
-                ...prev,
-                profile: null,
-                error: `Failed to load profile: ${fetchError?.message ?? 'Unknown error'}`,
-                loading: false
-              }))
-              return
-            }
-
-            setCachedProfile(existingProfile)
-            setState(prev => ({
-              ...prev,
-              profile: existingProfile,
-              error: null,
-              loading: false
-            }))
-            return
-          }
-
-          setState(prev => ({
-            ...prev,
-            profile: null,
-            error: `Failed to create profile: ${createError.message}`,
-            loading: false
-          }))
-          return
-        }
-
-        setCachedProfile(createdProfile)
-        setState(prev => ({
-          ...prev,
-          profile: createdProfile,
-          error: null,
-          loading: false
-        }))
-      } else if (error) {
-        setState(prev => ({
-          ...prev,
-          profile: null,
-          error: `Failed to load profile: ${error.message}`,
-          loading: false
-        }))
-      } else if (data) {
-        // Block suspended users
-        if (data.suspended_at) {
-          await supabase.auth.signOut()
-          clearCachedProfile()
-          if (mountedRef.current) {
-            setState({
-              user: null,
-              profile: null,
-              session: null,
-              loading: false,
-              error: 'Your account has been suspended. Contact an administrator.'
-            })
-          }
-          return
-        }
-
-        setCachedProfile(data)
-        setState(prev => ({
-          ...prev,
-          profile: data,
-          error: null,
-          loading: false
-        }))
-      }
-    } catch (err) {
-      if (!mountedRef.current) return
-      if (import.meta.env.DEV) {
-        console.error('Profile loading error:', err)
-      }
-      setState(prev => ({
-        ...prev,
-        profile: null,
-        error: err instanceof Error ? err.message : 'Unknown error',
-        loading: false
-      }))
-    } finally {
-      profileLoadingRef.current = false
-    }
-  }, [])
-
-  /** Shared session restoration logic used by both init and retry */
-  const restoreSession = useCallback(async () => {
-    const { data: { session }, error } = await supabase.auth.getSession()
-    if (!mountedRef.current) return
-    if (error) {
-      setState(prev => ({ ...prev, error: error.message, loading: false }))
-      return
-    }
-    if (session?.user) {
-      setState(prev => ({ ...prev, user: session.user, session, loading: false }))
-      await loadUserProfile(session.user)
-    } else {
-      setState(prev => ({ ...prev, loading: false, user: null, session: null }))
-    }
-  }, [loadUserProfile])
-
-  useEffect(() => {
-    mountedRef.current = true
-    let timeoutId: NodeJS.Timeout | null = null
-
-    const initializeAuth = async () => {
-      timeoutId = setTimeout(() => {
-        if (mountedRef.current && loadingRef.current) {
-          setState(prev => ({
-            ...prev,
-            loading: false,
-            error: 'Authentication check timed out. Please refresh the page.'
-          }))
-        }
-      }, AUTH_CHECK_TIMEOUT)
-
-      try {
-        await restoreSession()
-      } catch (err) {
-        if (!mountedRef.current) return
-        setState(prev => ({
-          ...prev,
-          error: err instanceof Error ? err.message : 'Failed to initialize auth',
-          loading: false
-        }))
-      } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId)
-          timeoutId = null
-        }
-      }
-    }
-
-    initializeAuth()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mountedRef.current) return
-
-      if (event === 'SIGNED_IN' && session?.user) {
-        setState(prev => ({
-          ...prev,
-          user: session.user,
-          session,
-          loading: false
-        }))
-        await loadUserProfile(session.user)
-      } else if (event === 'SIGNED_OUT') {
-        clearCachedProfile()
+  // After MSAL surfaces an active account, sync with the Express API to get
+  // (or create) the public.users row. Updates state with both user + profile.
+  const syncProfile = useCallback(async (account: AccountInfo, force = false) => {
+    const email = (account.username ?? '').toLowerCase()
+    if (!isValidIllinoisEmail(email)) {
+      // Tenant restriction in Entra should prevent this, but guard anyway.
+      await msalInstance.logoutPopup({ account })
+      if (mountedRef.current) {
         setState({
           user: null,
           profile: null,
           session: null,
           loading: false,
-          error: null
+          error: `Only @${ILLINOIS_DOMAIN} email addresses are allowed`,
         })
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        setState(prev => ({ ...prev, session, user: session.user }))
+      }
+      return
+    }
+
+    try {
+      const cached = !force ? getCachedProfile() : null
+      if (cached && cached.email.toLowerCase() === email) {
+        setState((prev) => ({
+          ...prev,
+          user: accountToUser(account, cached.id),
+          profile: cached,
+          session: { account },
+          loading: false,
+          error: null,
+        }))
+        // Continue to revalidate against the server (suspension check + drift).
+      }
+
+      console.log('[auth] calling POST /api/auth/sync for', email)
+      const { user: serverProfile } = await apiJson<{ user: UserProfile }>('/auth/sync', {
+        method: 'POST',
+      })
+      console.log('[auth] sync returned profile id=', serverProfile.id, 'email=', serverProfile.email)
+
+      if (!mountedRef.current) return
+
+      if (serverProfile.suspended_at) {
+        clearCachedProfile()
+        await msalInstance.logoutPopup({ account })
+        setState({
+          user: null,
+          profile: null,
+          session: null,
+          loading: false,
+          error: 'Your account has been suspended. Contact an administrator.',
+        })
+        return
+      }
+
+      setCachedProfile(serverProfile)
+      setState({
+        user: accountToUser(account, serverProfile.id),
+        profile: serverProfile,
+        session: { account },
+        loading: false,
+        error: null,
+      })
+    } catch (err) {
+      if (!mountedRef.current) return
+      const message =
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Sync failed'
+      setState((prev) => ({ ...prev, error: message, loading: false }))
+    }
+  }, [])
+
+  // Restore on mount: if MSAL has a cached account, treat that as logged-in.
+  useEffect(() => {
+    mountedRef.current = true
+
+    const restore = async () => {
+      await msalInitPromise
+      configureApi(msalInstance, msalInstance.getActiveAccount())
+      const active = msalInstance.getActiveAccount()
+      console.log('[auth] restore() active account:', active?.username ?? '(none)')
+      if (active) {
+        setState((prev) => ({ ...prev, session: { account: active }, loading: true }))
+        await syncProfile(active)
+      } else {
+        if (mountedRef.current) {
+          setState((prev) => ({ ...prev, loading: false, user: null, session: null }))
+        }
+      }
+    }
+
+    restore()
+
+    // React to MSAL events (other tabs, silent renewals, login/logout).
+    const callbackId = msalInstance.addEventCallback(async (event) => {
+      if (
+        event.eventType === EventType.LOGIN_SUCCESS &&
+        event.payload &&
+        'account' in event.payload &&
+        event.payload.account
+      ) {
+        const account = (event.payload as AuthenticationResult).account
+        msalInstance.setActiveAccount(account)
+        configureApi(msalInstance, account)
+        setState((prev) => ({ ...prev, session: { account }, loading: true }))
+        await syncProfile(account)
+      }
+      if (event.eventType === EventType.LOGOUT_SUCCESS) {
+        configureApi(msalInstance, null)
+        clearCachedProfile()
+        if (mountedRef.current) {
+          setState({ user: null, profile: null, session: null, loading: false, error: null })
+        }
       }
     })
 
     return () => {
       mountedRef.current = false
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-      }
-      subscription.unsubscribe()
+      if (callbackId) msalInstance.removeEventCallback(callbackId)
     }
-  }, [loadUserProfile, restoreSession])
+  }, [syncProfile])
 
-  const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        queryParams: {
-          hd: ILLINOIS_DOMAIN
-        },
-        redirectTo: window.location.origin
-      }
-    })
-    if (error) throw error
-  }
-
-  const signInWithEmail = async (email: string) => {
-    if (!isValidIllinoisEmail(email)) {
-      setState(prev => ({ ...prev, error: `Only @${ILLINOIS_DOMAIN} email addresses are allowed` }))
-      throw new Error(`Only @${ILLINOIS_DOMAIN} email addresses are allowed`)
-    }
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin
-      }
-    })
-
-    if (error) {
-      setState(prev => ({ ...prev, error: error.message }))
-      throw error
-    }
-
-    setState(prev => ({ ...prev, error: null }))
-  }
-
-  const signOut = async () => {
-    setState(prev => ({ ...prev, loading: true }))
-    const { error } = await supabase.auth.signOut()
-    if (error) {
-      setState(prev => ({ ...prev, loading: false, error: error.message }))
-      throw error
-    }
-    clearCachedProfile()
-  }
-
-  const refreshProfile = async () => {
-    if (state.user) {
-      await loadUserProfile(state.user, true)
-    }
-  }
-
-  const retryAuth = async () => {
-    setState(prev => ({ ...prev, loading: true, error: null }))
+  const signInWithGoogle = useCallback(async () => {
+    setState((prev) => ({ ...prev, error: null }))
     try {
-      await restoreSession()
+      await msalInitPromise
+      // Redirect flow: the browser navigates to login.microsoftonline.com and
+      // returns to this origin. The LOGIN_SUCCESS event + syncProfile fire on
+      // the next page load via handleRedirectPromise → addEventCallback.
+      await msalInstance.loginRedirect({ scopes: apiScopes, prompt: 'select_account' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sign-in failed'
+      setState((prev) => ({ ...prev, error: message, loading: false }))
+      throw err
+    }
+  }, [])
+
+  // No email-OTP equivalent under Entra ID for our setup. Route to the same
+  // tenant-restricted popup login; user picks their @illinois.edu account.
+  const signInWithEmail = signInWithGoogle
+
+  const signOut = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true }))
+    try {
+      clearCachedProfile()
+      const active = msalInstance.getActiveAccount()
+      if (active) await msalInstance.logoutRedirect({ account: active })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sign-out failed'
+      setState((prev) => ({ ...prev, loading: false, error: message }))
+      throw err
+    }
+  }, [])
+
+  const refreshProfile = useCallback(async () => {
+    const account = msalInstance.getActiveAccount()
+    if (account) await syncProfile(account, true)
+  }, [syncProfile])
+
+  const retryAuth = useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true, error: null }))
+    try {
+      const account = msalInstance.getActiveAccount()
+      if (account) {
+        try {
+          await msalInstance.acquireTokenSilent({ scopes: apiScopes, account })
+        } catch (err) {
+          if (err instanceof InteractionRequiredAuthError) {
+            // Fall back to a full sign-in redirect on consent-required / expired.
+            await msalInstance.acquireTokenRedirect({ scopes: apiScopes, account })
+            return
+          }
+          throw err
+        }
+        await syncProfile(account, true)
+      } else {
+        setState((prev) => ({ ...prev, loading: false }))
+      }
     } catch (err) {
       if (!mountedRef.current) return
-      setState(prev => ({
-        ...prev,
-        error: err instanceof Error ? err.message : 'Failed to retry auth',
-        loading: false
-      }))
+      const message = err instanceof Error ? err.message : 'Retry failed'
+      setState((prev) => ({ ...prev, error: message, loading: false }))
     }
-  }
+  }, [syncProfile])
 
   return (
-    <AuthContext.Provider value={{ ...state, signInWithGoogle, signInWithEmail, signOut, refreshProfile, retryAuth }}>
+    <AuthContext.Provider
+      value={{ ...state, signInWithGoogle, signInWithEmail, signOut, refreshProfile, retryAuth }}
+    >
       {children}
     </AuthContext.Provider>
+  )
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  return (
+    <MsalProvider instance={msalInstance}>
+      <AuthProviderInner>{children}</AuthProviderInner>
+    </MsalProvider>
   )
 }
 

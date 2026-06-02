@@ -9,22 +9,30 @@
 
 ## Context
 
-IlliniHunt is a Product Hunt–style platform for UIUC. UIUC IT/compliance requires all student data to live on Azure infrastructure. Currently the app is a React/Vite SPA that talks directly to Supabase, which provides four services that all need to be replaced:
+IlliniHunt is a Product Hunt–style platform for UIUC. UIUC IT/compliance requires all student data — and the entire hosting stack — to live on Azure infrastructure. Currently the app is a React/Vite SPA hosted on Vercel that talks directly to Supabase. Both the hosting platform and Supabase need to move:
 
-| Supabase service | Replacement |
+| Current | Replacement |
 |---|---|
-| PostgreSQL (with RLS) | Azure Database for PostgreSQL – Flexible Server |
-| Auth (Google OAuth + @illinois.edu guard) | Microsoft Entra ID (UIUC tenant) via MSAL |
-| Storage (project images) | Azure Blob Storage |
-| Realtime (live vote counts) | 30-second polling (dropped) |
+| Vercel (frontend hosting) | Azure Static Web Apps |
+| Supabase PostgreSQL (with RLS) | Azure Database for PostgreSQL – Flexible Server |
+| Supabase Auth (Google OAuth + @illinois.edu guard) | Microsoft Entra ID (UIUC tenant) via MSAL |
+| Supabase Storage (project images) | Azure Blob Storage |
+| Supabase Realtime (live vote counts) | 30-second polling (dropped) |
 
 ---
 
 ## Architecture
 
 ```
-Browser — React/Vite SPA (stays on Vercel)
+Browser
+  │
+  ▼
+Cloudflare (DNS + CDN, optional — keep existing illinihunt.org setup)
+  │
+  ▼
+Azure Static Web Apps — React/Vite SPA
   │  Authorization: Bearer <Entra ID access token>
+  │  (proxied via SWA /api/* linked backend, or direct CORS call)
   ▼
 Azure Container Apps — Express API (new)
   │  Prisma ORM            │  @azure/storage-blob
@@ -33,7 +41,10 @@ Azure PostgreSQL        Azure Blob Storage
 (Flexible Server)
 ```
 
-The frontend stays on Vercel and stays a React SPA. No framework migration. The only frontend change is: replace all Supabase SDK calls with `fetch()` calls to the new Express API. Service layer function signatures stay the same — only the implementations change.
+The frontend stays a React/Vite SPA — no framework migration, no UI changes. Two things change about how it's hosted and what it calls:
+
+1. Hosting moves from **Vercel → Azure Static Web Apps** (Azure-native, satisfies UIUC's "everything on Azure" requirement, has built-in global CDN, PR preview environments, and one-click GitHub Actions deploys).
+2. All Supabase SDK calls become `fetch()` calls to the new Express API. Service layer function signatures stay identical — only implementations change.
 
 ---
 
@@ -362,7 +373,7 @@ Remove: `@supabase/supabase-js` (after all usages replaced), `src/lib/supabase.t
 ### New environment variables
 
 ```
-VITE_API_URL=https://api.illinihunt.org   # or Azure Container Apps URL
+VITE_API_URL=https://api.illinihunt.org   # or Azure Container Apps URL; or "/api" if using SWA linked backend
 VITE_AZURE_TENANT_ID=<UIUC tenant ID>
 VITE_AZURE_CLIENT_ID=<app registration client ID>
 ```
@@ -371,7 +382,84 @@ Remove: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 
 ---
 
-## Part 5 — Azure Container Apps deployment
+## Part 5 — Azure Static Web Apps (frontend hosting)
+
+### Service
+
+Azure Static Web Apps (Free tier is sufficient — 100 GB bandwidth/mo, unlimited builds via GitHub Actions, custom domains, PR preview environments). Created in the `illinihunt` resource group alongside the API.
+
+### SPA fallback routing
+
+Vercel's `vercel.json` rewrite `/:path((?!.*\\.).*)` → `/index.html` is replaced with `staticwebapp.config.json` at the repo root:
+
+```json
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": ["/assets/*", "/*.{js,css,png,jpg,jpeg,svg,ico,webp,woff,woff2}"]
+  },
+  "mimeTypes": {
+    ".json": "application/json"
+  }
+}
+```
+
+### Linked backend (recommended) vs. direct CORS
+
+SWA supports "linking" a backend (Container Apps in our case) so that requests to `/api/*` on the SWA hostname are proxied to the API without CORS. Two options:
+
+- **Linked backend (recommended)**: Set `VITE_API_URL=/api` and link the Container App in the SWA "APIs" blade. Browser sees same-origin requests, no CORS configuration on Express needed, Entra Bearer token still flows through.
+- **Direct CORS**: Set `VITE_API_URL=https://api.illinihunt.org`, configure CORS on Express to allow the SWA + custom domain origins. Simpler conceptually but adds a CORS surface to maintain.
+
+### CI/CD (GitHub Actions)
+
+When the SWA resource is created from the Azure Portal and pointed at the GitHub repo, Azure auto-generates a workflow file (`.github/workflows/azure-static-web-apps-<id>.yml`). Edit it to inject build-time env vars:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"
+          output_location: "dist"
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_AZURE_TENANT_ID: ${{ vars.VITE_AZURE_TENANT_ID }}
+          VITE_AZURE_CLIENT_ID: ${{ vars.VITE_AZURE_CLIENT_ID }}
+```
+
+### Custom domain + Cloudflare
+
+Keep Cloudflare DNS + CDN in front of SWA (preserves the existing cache-purge workflow documented in `CLAUDE.md`):
+
+1. In SWA → Custom domains → add `illinihunt.org`, validate via CNAME.
+2. Update Cloudflare DNS: CNAME `illinihunt.org` → `<name>.azurestaticapps.net`, proxy enabled.
+3. SWA's auto-managed certificate handles TLS at the Azure edge; Cloudflare handles TLS at its edge.
+
+Note: the `vercel.json` cache-purge guidance in `CLAUDE.md` still applies — Cloudflare cache must be purged after SWA deploys for the same reasons (long `max-age` on static assets).
+
+### What goes away
+
+- `vercel.json` — replaced by `staticwebapp.config.json`
+- Vercel project, environment variables, deploy hooks
+- Vercel GitHub integration
+
+---
+
+## Part 6 — Azure Container Apps deployment
 
 ### CI/CD (GitHub Actions)
 
@@ -418,8 +506,9 @@ The student worker should tackle these phases in order — each phase is indepen
 - Create Azure resource group `illinihunt`
 - Provision PostgreSQL Flexible Server
 - Provision Blob Storage account + container
-- Register app in Entra ID (UIUC tenant), configure redirect URIs
+- Register app in Entra ID (UIUC tenant), configure redirect URIs (include the SWA hostname + `illinihunt.org`)
 - Set up Azure Container Registry
+- Create Azure Static Web App, link to GitHub repo (workflow file is auto-generated)
 
 **Phase 2 — Database migration**
 - Export Supabase schema + data
@@ -452,11 +541,14 @@ The student worker should tackle these phases in order — each phase is indepen
 - Test image uploads via new `/api/upload/image` endpoint
 
 **Phase 7 — Cutover**
-- Update Vercel env vars (swap Supabase vars for Azure vars)
-- Point `VITE_API_URL` at production Container Apps URL
-- Smoke test in preview deployment
-- Promote to production
-- Monitor Sentry for regressions
+- Add `staticwebapp.config.json` to the repo (SPA fallback)
+- Configure SWA env vars (`VITE_API_URL`, `VITE_AZURE_TENANT_ID`, `VITE_AZURE_CLIENT_ID`)
+- Trigger SWA build via push; verify in a PR preview environment first
+- Add `illinihunt.org` as a custom domain on the SWA, validate CNAME
+- Update Cloudflare DNS: CNAME `illinihunt.org` → `<name>.azurestaticapps.net` (proxy enabled)
+- Purge Cloudflare cache (per `CLAUDE.md` Cloudflare + Vercel section — same procedure applies)
+- Decommission the Vercel project once traffic is confirmed flowing through Azure
+- Monitor Sentry for regressions for 48h
 
 ---
 
@@ -464,10 +556,11 @@ The student worker should tackle these phases in order — each phase is indepen
 
 - Frontend routing, page components, UI — untouched
 - Tailwind config, shadcn/ui components — untouched
-- Vercel deployment pipeline for the frontend — untouched
-- Cloudflare CDN config — untouched
+- Cloudflare DNS + CDN config — keep in front of SWA (only the origin CNAME target changes)
 - All service function signatures in `src/lib/services/` — same interface, new implementation
 - Sentry instrumentation — carry over to the Express API as well (`@sentry/node`)
+
+What does change for hosting: Vercel is fully replaced by Azure Static Web Apps. `vercel.json` → `staticwebapp.config.json`; Vercel project decommissioned at the end of Phase 7.
 
 ---
 
@@ -477,3 +570,4 @@ The student worker should tackle these phases in order — each phase is indepen
 2. **Existing user accounts** — current users authenticated via Google OAuth. Their Supabase UUIDs are the FK in all tables. On first Entra login, `POST /api/auth/sync` creates a new `users` row with their `entra_oid`. Existing rows keyed on old Supabase UUIDs will be orphaned unless a mapping is done. If preserving user history matters, a migration script needs to match old Supabase email addresses to Entra `email` claims and re-key the FKs. Decide before Phase 2.
 3. **Vote count trigger drift** — the live trigger `project_upvotes_count_trigger` may point at `update_project_upvotes_count` instead of `update_project_upvotes_count_robust`. Verify which function is live in Supabase before exporting the schema.
 4. **Supabase Storage export** — Supabase dashboard allows a zip export of Storage buckets. Do this early; free-tier projects can be paused and data lost.
+5. **SWA region + compliance scope** — confirm with UIUC IT that Azure Static Web Apps satisfies the "everything on Azure" requirement (static HTML/JS technically isn't student data, but compliance may read the requirement broadly). Also pick a region close to the API region to minimize cross-region latency for the linked backend.

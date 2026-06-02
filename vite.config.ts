@@ -38,35 +38,13 @@ export default defineConfig({
     },
   },
   build: {
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-      },
-    },
-    chunkSizeWarningLimit: 600, // Increase warning limit
-    sourcemap: false, // Disable sourcemaps in production for smaller bundle
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          // Vendor chunks
-          'react-vendor': ['react', 'react-dom'],
-          'router-vendor': ['react-router-dom'],
-          'supabase-vendor': ['@supabase/supabase-js'],
-          'ui-vendor': [
-            '@radix-ui/react-avatar',
-            '@radix-ui/react-dialog', 
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-label',
-            '@radix-ui/react-select',
-            '@radix-ui/react-slot',
-            '@radix-ui/react-toast'
-          ],
-          'form-vendor': ['react-hook-form', '@hookform/resolvers', 'zod'],
-          'utils-vendor': ['lucide-react', 'date-fns', 'clsx', 'tailwind-merge'],
-        },
-      },
-    },
+    // esbuild minifier (Vite default) — terser was producing broken cross-chunk
+    // re-exports for shadcn/ui components (e.g. `Export 'Avatar' is not defined`).
+    minify: 'esbuild',
+    chunkSizeWarningLimit: 600,
+    sourcemap: false,
+    // No manualChunks — Vite's automatic chunking handles shadcn/ui + Radix
+    // re-export patterns cleanly. Manual splits broke when the avatar.tsx
+    // wrapper ended up in one chunk while consumers were in another.
   },
 })

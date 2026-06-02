@@ -4,27 +4,34 @@ let isInitialized = false
 let initPromise: Promise<void> | null = null
 
 /**
- * Ensures Supabase client has restored its session from localStorage
- * This should be called before the app renders to prevent race conditions
+ * Restores the Supabase session from localStorage before app render.
+ *
+ * Post-Azure-migration: Supabase is only present when the legacy VITE_SUPABASE_*
+ * env vars are configured. If not, this is a no-op — Entra ID auth is handled
+ * by AuthContext + MSAL, which has its own session restoration.
  */
 export async function ensureSupabaseInitialized(): Promise<void> {
   if (isInitialized) return
-  
   if (initPromise) return initPromise
-  
+
+  // If the Supabase env vars aren't configured, skip — the client is a
+  // throwing-on-access stub and calling .auth.getSession() would explode.
+  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+    isInitialized = true
+    return
+  }
+
   initPromise = (async () => {
     try {
-      // This will restore the session from localStorage if it exists
-      // It's important to wait for this before rendering the app
       await supabase.auth.getSession()
       isInitialized = true
     } catch (error) {
       if (import.meta.env.DEV) {
         console.error('Failed to initialize Supabase session:', error)
       }
-      isInitialized = true // Mark as initialized even on error
+      isInitialized = true
     }
   })()
-  
+
   return initPromise
 }

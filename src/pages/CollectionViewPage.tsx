@@ -98,7 +98,7 @@ export function CollectionViewPage() {
           return
         }
 
-        setCollection(data)
+        setCollection(data as unknown as typeof collection)
       } catch (err) {
         setError('Failed to load collection')
         // Error already handled by setting error state

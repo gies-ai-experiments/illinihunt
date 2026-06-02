@@ -32,7 +32,7 @@ export function BookmarksPage() {
         if (fetchError) {
           throw fetchError
         }
-        setBookmarks((data as BookmarkRow[]) || [])
+        setBookmarks((data as unknown as BookmarkRow[]) || [])
       } catch (err) {
         setError(getErrorMessage(err))
       } finally {

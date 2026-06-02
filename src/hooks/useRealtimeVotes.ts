@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
-import type { Database } from '@/types/database'
+import { apiResult } from '@/lib/api'
 
 interface VoteCountChange {
   projectId: string
@@ -21,29 +19,33 @@ interface UseRealtimeVotesProps {
   userId?: string
 }
 
+const POLL_INTERVAL_MS = 30_000
+
 /**
- * Optimized realtime votes hook
- * Performance improvements:
- * - Uses useCallback to memoize handlers and prevent unnecessary subscription recreations
- * - Properly manages channel cleanup to prevent memory leaks
- * - Logs errors in DEV mode for debugging
+ * 30-second polling replacement for the old Supabase Realtime hook.
+ *
+ * Architecturally: fetches the active project list once per poll cycle, then
+ * batches a single GET /api/votes/batch?projectIds=... request to update the
+ * vote map. Changes vs. the previous snapshot fire the same callbacks the
+ * realtime version did, so RealtimeVotesProvider doesn't need to change.
+ *
+ * Trade-offs vs. realtime:
+ *   - Up to 30s of lag for vote count visibility (acceptable for IlliniHunt)
+ *   - Two HTTP requests per poll (list + batch); both are cheap reads
+ *   - Project deletions detected by absence from successive polls
  */
-export function useRealtimeVotes({ 
-  onVoteCountChange, 
-  onUserVoteChange, 
+export function useRealtimeVotes({
+  onVoteCountChange,
+  onUserVoteChange,
   onProjectDeleted,
-  userId 
+  userId,
 }: UseRealtimeVotesProps) {
-  const channelsRef = useRef<RealtimeChannel[]>([])
   const [isConnected, setIsConnected] = useState(false)
 
-  // Store callbacks in refs to avoid dependency issues while maintaining stable references
-  // Using mutable refs that can be updated
   const onVoteCountChangeRef = useRef(onVoteCountChange)
   const onUserVoteChangeRef = useRef(onUserVoteChange)
   const onProjectDeletedRef = useRef(onProjectDeleted)
 
-  // Update refs when callbacks change
   useEffect(() => {
     onVoteCountChangeRef.current = onVoteCountChange
     onUserVoteChangeRef.current = onUserVoteChange
@@ -51,163 +53,71 @@ export function useRealtimeVotes({
   }, [onVoteCountChange, onUserVoteChange, onProjectDeleted])
 
   useEffect(() => {
-    // Clean up existing channels
-    channelsRef.current.forEach(channel => {
-      supabase.removeChannel(channel)
-    })
-    channelsRef.current = []
+    let cancelled = false
+    const prevData = new Map<string, { count: number; hasVoted: boolean }>()
 
-    const setupRealtimeSubscriptions = async () => {
+    const poll = async () => {
       try {
-        // Channel 1: Listen to project upvotes_count changes and deletions
-        const projectsChannel = supabase
-          .channel('realtime-projects-votes')
-          .on(
-            'postgres_changes',
-            {
-              event: 'UPDATE',
-              schema: 'public',
-              table: 'projects'
-              // Removed problematic filter: 'upvotes_count=neq.0'
-            },
-            (
-              payload: RealtimePostgresChangesPayload<Database['public']['Tables']['projects']['Row']>
-            ) => {
-              const newProject = payload.new as Database['public']['Tables']['projects']['Row'] | null
-              const oldProject = payload.old as Database['public']['Tables']['projects']['Row'] | null
-
-              if (newProject && oldProject) {
-                const newCount = newProject.upvotes_count ?? 0
-                const oldCount = oldProject.upvotes_count ?? 0
-
-                // Only trigger callback if count actually changed
-                if (newCount !== oldCount && onVoteCountChangeRef.current) {
-                  onVoteCountChangeRef.current({
-                    projectId: newProject.id,
-                    newCount: newCount
-                  })
-                }
-              }
-            }
-          )
-          .on(
-            'postgres_changes',
-            {
-              event: 'DELETE',
-              schema: 'public',
-              table: 'projects'
-            },
-            (
-              payload: RealtimePostgresChangesPayload<Database['public']['Tables']['projects']['Row']>
-            ) => {
-              const deletedProject = payload.old as Database['public']['Tables']['projects']['Row'] | null
-
-              if (deletedProject && onProjectDeletedRef.current) {
-                // Clear vote data for deleted project
-                onProjectDeletedRef.current(deletedProject.id)
-              }
-            }
-          )
-
-        // Channel 2: Listen to votes table changes for user vote status
-        const votesChannel = supabase
-          .channel('realtime-votes-table')
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'votes'
-            },
-            (
-              payload: RealtimePostgresChangesPayload<Database['public']['Tables']['votes']['Row']>
-            ) => {
-              const newVote = payload.new as Database['public']['Tables']['votes']['Row'] | null
-
-              if (newVote && onUserVoteChangeRef.current) {
-                onUserVoteChangeRef.current({
-                  projectId: newVote.project_id,
-                  userId: newVote.user_id,
-                  hasVoted: true
-                })
-              }
-            }
-          )
-          .on(
-            'postgres_changes',
-            {
-              event: 'DELETE',
-              schema: 'public',
-              table: 'votes'
-            },
-            (
-              payload: RealtimePostgresChangesPayload<Database['public']['Tables']['votes']['Row']>
-            ) => {
-              const oldVote = payload.old as Database['public']['Tables']['votes']['Row'] | null
-
-              if (oldVote && onUserVoteChangeRef.current) {
-                onUserVoteChangeRef.current({
-                  projectId: oldVote.project_id,
-                  userId: oldVote.user_id,
-                  hasVoted: false
-                })
-              }
-            }
-          )
-
-        // Store channels for cleanup
-        channelsRef.current = [projectsChannel, votesChannel]
-
-        // Subscribe to both channels with consistent error handling
-        const subscribePromises = channelsRef.current.map(channel => {
-          return new Promise<void>((resolve, reject) => {
-            const channelName = channel.topic
-            
-            channel.subscribe((status) => {
-              if (status === 'SUBSCRIBED') {
-                resolve()
-              } else if (status === 'CHANNEL_ERROR') {
-                reject(new Error(`Failed to subscribe to ${channelName}`))
-              } else if (status === 'TIMED_OUT') {
-                reject(new Error(`Timeout subscribing to ${channelName}`))
-              }
-            })
-          })
-        })
-
-        await Promise.allSettled(subscribePromises)
-        setIsConnected(true)
-
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.error('Realtime subscription setup failed:', error)
+        const projectsResult = await apiResult<{ projects: Array<{ id: string }> }>(
+          '/projects?limit=500',
+        )
+        if (cancelled) return
+        if (projectsResult.error || !projectsResult.data) {
+          setIsConnected(false)
+          return
         }
+        const ids = projectsResult.data.projects.map((p) => p.id)
+        if (ids.length === 0) {
+          setIsConnected(true)
+          return
+        }
+
+        const votesResult = await apiResult<Record<string, { count: number; hasVoted: boolean }>>(
+          `/votes/batch?projectIds=${ids.join(',')}`,
+        )
+        if (cancelled) return
+        if (votesResult.error || !votesResult.data) {
+          setIsConnected(false)
+          return
+        }
+
+        const newIds = new Set<string>()
+        for (const [id, val] of Object.entries(votesResult.data)) {
+          newIds.add(id)
+          const prev = prevData.get(id)
+          prevData.set(id, val)
+          if (!prev || prev.count !== val.count) {
+            onVoteCountChangeRef.current?.({ projectId: id, newCount: val.count })
+          }
+          if (userId && prev && prev.hasVoted !== val.hasVoted) {
+            onUserVoteChangeRef.current?.({ projectId: id, userId, hasVoted: val.hasVoted })
+          }
+        }
+        // Detect deletions (in prev snapshot but not in current)
+        for (const id of Array.from(prevData.keys())) {
+          if (!newIds.has(id)) {
+            prevData.delete(id)
+            onProjectDeletedRef.current?.(id)
+          }
+        }
+        setIsConnected(true)
+      } catch {
         setIsConnected(false)
       }
     }
 
-    setupRealtimeSubscriptions()
+    poll() // immediate first poll
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS)
 
-    // Cleanup function
     return () => {
-      channelsRef.current.forEach(channel => {
-        try {
-          supabase.removeChannel(channel)
-        } catch (error) {
-          if (import.meta.env.DEV) {
-            console.error('Channel cleanup error:', error)
-          }
-        }
-      })
-      channelsRef.current = []
+      cancelled = true
+      clearInterval(intervalId)
       setIsConnected(false)
     }
-    // Only depend on userId to avoid unnecessary reconnections
-    // Callbacks are accessed via refs, so they don't need to be in dependencies
   }, [userId])
 
   return {
     isConnected,
-    channels: channelsRef.current
+    channels: [] as never[],
   }
 }

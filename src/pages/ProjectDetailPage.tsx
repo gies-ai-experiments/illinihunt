@@ -34,7 +34,7 @@ type ProjectDetail = {
   categories: {
     id: string
     name: string
-    color: string
+    color: string | null
     icon: string | null
   } | null
 }
@@ -200,7 +200,7 @@ export function ProjectDetailPage() {
                     }}
                   >
                     {project.categories.icon && (
-                      <span className="mr-1" style={{ color: project.categories.color }}>{project.categories.icon}</span>
+                      <span className="mr-1" style={{ color: project.categories.color ?? undefined }}>{project.categories.icon}</span>
                     )}
                     {sanitizeContent(project.categories.name)}
                   </Badge>

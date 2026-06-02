@@ -24,10 +24,10 @@ type Collection = {
   id: string
   name: string
   description: string | null
-  is_public: boolean
-  projects_count: number
-  created_at: string
-  updated_at: string
+  is_public: boolean | null
+  projects_count: number | null
+  created_at: string | null
+  updated_at: string | null
   users?: {
     id: string
     username: string | null
@@ -278,7 +278,7 @@ export function CollectionsPage() {
                       </div>
                       <div className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        <span>{formatDistance(new Date(collection.updated_at), new Date(), { addSuffix: true })}</span>
+                        <span>{formatDistance(new Date(collection.updated_at ?? 0), new Date(), { addSuffix: true })}</span>
                       </div>
                     </div>
 

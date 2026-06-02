@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { apiFetch, ApiError } from './api'
 
 export interface ImageUploadResult {
   url: string | null
@@ -8,97 +8,54 @@ export interface ImageUploadResult {
 const UPLOAD_TIMEOUT_MS = 30000
 const COMPRESSION_TIMEOUT_MS = 5000
 
-// Hard cap matching the storage bucket's file_size_limit. compressImage
-// is expected to bring large source files under this; this guard exists
-// so a bucket rejection turns into a clear UI error instead of a 4xx.
+// Server-side limit (Express /api/upload/image enforces 5 MB).
 const BUCKET_MAX_BYTES = 5 * 1024 * 1024
-
-// Permissive cap on the raw file before compression. Most phone screenshots
-// and camera photos land between 4–15 MB; canvas can re-encode them down
-// to a few hundred KB. We cap at 25 MB to avoid canvas OOM on huge sources.
 export const RAW_INPUT_MAX_BYTES = 25 * 1024 * 1024
 
 /**
- * Upload an image file to Supabase Storage. Expects the caller to have
- * already run the file through compressImage; this function only checks
- * the post-compression payload against the bucket's 5 MB limit.
+ * Upload an image to Azure Blob Storage via the Express API.
+ * The userId arg is kept for source compatibility but ignored — the API
+ * derives the user from the Entra Bearer token.
  */
-export async function uploadProjectImage(file: File, userId: string): Promise<ImageUploadResult> {
+export async function uploadProjectImage(file: File, _userId: string): Promise<ImageUploadResult> {
   try {
-    // Validate file type
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
     if (!allowedTypes.includes(file.type)) {
-      return {
-        url: null,
-        error: 'Please upload a valid image file (JPG, PNG, WebP, or GIF)'
-      }
+      return { url: null, error: 'Please upload a valid image file (JPG, PNG, WebP, or GIF)' }
     }
-
-    // Final guard: the storage bucket rejects > 5 MB. compressImage should
-    // have shrunk the file already; if we still exceed the cap, the encoder
-    // didn't help (e.g., browser without WebP encode support) and the user
-    // needs a smaller source.
     if (file.size > BUCKET_MAX_BYTES) {
       return {
         url: null,
-        error: 'Image is too large to upload after compression. Please use a smaller image (under 5 MB after compression).'
+        error:
+          'Image is too large to upload after compression. Please use a smaller image (under 5 MB after compression).',
       }
     }
 
-    // Create unique filename
-    const fileExt = file.name.split('.').pop()?.toLowerCase()
-    const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+    const form = new FormData()
+    form.append('image', file, file.name)
 
-    // Upload to Supabase Storage with a timeout to prevent infinite hangs
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
-    const uploadTimeout = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(
-        () => reject(new Error('Upload timed out. Please check your connection and try again.')),
-        UPLOAD_TIMEOUT_MS
-      )
-    })
-
-    const uploadRequest = supabase.storage
-      .from('project-images')
-      .upload(fileName, file, {
-        cacheControl: '3600', // Cache for 1 hour
-        upsert: false
-      })
-
-    let result: Awaited<typeof uploadRequest>
+    const controller = new AbortController()
+    const timeoutHandle = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS)
     try {
-      result = await Promise.race([uploadRequest, uploadTimeout])
+      const res = await apiFetch('/upload/image', {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      })
+      const json = (await res.json()) as { url: string; path: string }
+      return { url: json.url, error: null }
     } finally {
-      if (timeoutHandle) clearTimeout(timeoutHandle)
-    }
-    const { data, error } = result
-
-    if (error) {
-      if (import.meta.env.DEV) {
-        console.error('Storage upload error:', error)
-      }
-      return {
-        url: null,
-        error: `Upload failed: ${error.message}`
-      }
-    }
-
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('project-images')
-      .getPublicUrl(data.path)
-
-    return {
-      url: publicUrl,
-      error: null
+      clearTimeout(timeoutHandle)
     }
   } catch (err) {
-    if (import.meta.env.DEV) {
-      console.error('Image upload error:', err)
+    if (import.meta.env.DEV) console.error('Image upload error:', err)
+    if (err instanceof ApiError) return { url: null, error: `Upload failed: ${err.message}` }
+    if ((err as { name?: string }).name === 'AbortError') {
+      return { url: null, error: 'Upload timed out. Please check your connection and try again.' }
     }
     return {
       url: null,
-      error: err instanceof Error ? err.message : 'An unexpected error occurred while uploading the image'
+      error: err instanceof Error ? err.message : 'An unexpected error occurred while uploading the image',
     }
   }
 }

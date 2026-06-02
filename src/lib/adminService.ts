@@ -1,4 +1,7 @@
-import { supabase } from './supabase'
+// AdminService — talks to the Express API (POST-Azure migration).
+// All endpoints are guarded by requireAdmin middleware on the server side.
+
+import { apiResult } from '@/lib/api'
 
 export type ProjectStatus = 'active' | 'featured' | 'archived' | 'draft'
 
@@ -40,127 +43,45 @@ export interface PlatformStats {
   totalComments: number
 }
 
-/**
- * AdminService - Uses RPC functions with SECURITY DEFINER to bypass RLS
- *
- * All operations are authorized at the database level via the is_admin() function.
- * This ensures admins can manage projects they don't own without RLS blocking them.
- */
 export class AdminService {
-  /**
-   * Get all projects with any status (not just 'active')
-   * Uses admin_get_projects RPC function which bypasses RLS
-   */
   static async getAllProjects(options?: {
     status?: ProjectStatus
     search?: string
     limit?: number
     offset?: number
   }): Promise<{ data: AdminProject[] | null; error: { message: string } | null }> {
-    try {
-      const { data, error } = await supabase.rpc('admin_get_projects', {
-        filter_status: options?.status || null,
-        search_query: options?.search || null,
-        result_limit: options?.limit || 50,
-        result_offset: options?.offset || 0
-      })
-
-      if (error) {
-        // Handle authorization error specifically
-        if (error.message.includes('Unauthorized')) {
-          return { data: null, error: { message: 'Unauthorized: Admin access required' } }
-        }
-        return { data: null, error: { message: error.message } }
-      }
-
-      // RPC returns JSON, parse if needed
-      const projects = Array.isArray(data) ? data : (data || [])
-      return { data: projects as AdminProject[], error: null }
-    } catch (err) {
-      return {
-        data: null,
-        error: { message: err instanceof Error ? err.message : 'Failed to fetch projects' }
-      }
-    }
+    const qs = new URLSearchParams()
+    if (options?.status) qs.set('status', options.status)
+    if (options?.search) qs.set('search', options.search)
+    if (options?.limit) qs.set('limit', String(options.limit))
+    if (options?.offset) qs.set('offset', String(options.offset))
+    const result = await apiResult<{ data: AdminProject[] }>(`/admin/projects?${qs.toString()}`)
+    return { data: result.data?.data ?? null, error: result.error }
   }
 
-  /**
-   * Update project status (feature, archive, activate)
-   * Uses admin_update_project_status RPC function which bypasses RLS
-   */
   static async updateProjectStatus(
     projectId: string,
-    status: ProjectStatus
+    status: ProjectStatus,
   ): Promise<{ data: AdminProject | null; error: { message: string } | null }> {
-    try {
-      const { data, error } = await supabase.rpc('admin_update_project_status', {
-        project_id: projectId,
-        new_status: status
-      })
-
-      if (error) {
-        // Handle authorization error specifically
-        if (error.message.includes('Unauthorized')) {
-          return { data: null, error: { message: 'Unauthorized: Admin access required' } }
-        }
-        return { data: null, error: { message: error.message } }
-      }
-
-      return { data: data as AdminProject, error: null }
-    } catch (err) {
-      return {
-        data: null,
-        error: { message: err instanceof Error ? err.message : 'Failed to update project status' }
-      }
-    }
+    const result = await apiResult<{ data: AdminProject }>(`/admin/projects/${projectId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    })
+    return { data: result.data?.data ?? null, error: result.error }
   }
 
-  /**
-   * Get platform statistics
-   * Uses admin_get_stats RPC function which bypasses RLS
-   */
-  static async getStats(): Promise<{ data: PlatformStats | null; error: { message: string } | null }> {
-    try {
-      const { data, error } = await supabase.rpc('admin_get_stats')
-
-      if (error) {
-        // Handle authorization error specifically
-        if (error.message.includes('Unauthorized')) {
-          return { data: null, error: { message: 'Unauthorized: Admin access required' } }
-        }
-        return { data: null, error: { message: error.message } }
-      }
-
-      return { data: data as PlatformStats, error: null }
-    } catch (err) {
-      return {
-        data: null,
-        error: { message: err instanceof Error ? err.message : 'Failed to fetch stats' }
-      }
-    }
+  static async getStats(): Promise<{
+    data: PlatformStats | null
+    error: { message: string } | null
+  }> {
+    const result = await apiResult<{ data: PlatformStats }>('/admin/stats')
+    return { data: result.data?.data ?? null, error: result.error }
   }
 
-  /**
-   * Delete a project (admin override - bypasses ownership check)
-   * Uses admin_delete_project RPC function which bypasses RLS
-   */
   static async deleteProject(projectId: string): Promise<{ error: { message: string } | null }> {
-    try {
-      const { error } = await supabase.rpc('admin_delete_project', {
-        project_id: projectId
-      })
-
-      if (error) {
-        // Handle authorization error specifically
-        if (error.message.includes('Unauthorized')) {
-          return { error: { message: 'Unauthorized: Admin access required' } }
-        }
-        return { error: { message: error.message } }
-      }
-
-      return { error: null }
-    } catch (err) {
-      return { error: { message: err instanceof Error ? err.message : 'Failed to delete project' } }
-    }
+    const result = await apiResult<{ ok: true }>(`/admin/projects/${projectId}`, {
+      method: 'DELETE',
+    })
+    return { error: result.error }
   }
 }

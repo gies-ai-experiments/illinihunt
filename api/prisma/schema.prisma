@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model bookmarks {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  project_id String    @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  projects   projects  @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, project_id])
+  @@index([created_at(sort: Desc)], map: "idx_bookmarks_created_at")
+  @@index([project_id], map: "idx_bookmarks_project_id")
+  @@index([user_id], map: "idx_bookmarks_user_id")
+}
+
+model categories {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String     @unique
+  description String?
+  icon        String?
+  color       String?    @default("#FF6B35")
+  is_active   Boolean?   @default(true)
+  created_at  DateTime?  @default(now()) @db.Timestamptz(6)
+  projects    projects[]
+}
+
+model collection_projects {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  collection_id String      @db.Uuid
+  project_id    String      @db.Uuid
+  added_at      DateTime?   @default(now()) @db.Timestamptz(6)
+  collections   collections @relation(fields: [collection_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  projects      projects    @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([collection_id, project_id])
+  @@index([added_at(sort: Desc)], map: "idx_collection_projects_added_at")
+  @@index([collection_id], map: "idx_collection_projects_collection_id")
+  @@index([project_id], map: "idx_collection_projects_project_id")
+}
+
+model collections {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String                @db.Uuid
+  name                String
+  description         String?
+  is_public           Boolean?              @default(false)
+  projects_count      Int?                  @default(0)
+  created_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  collection_projects collection_projects[]
+  users               users                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)], map: "idx_collections_created_at")
+  @@index([is_public], map: "idx_collections_is_public")
+  @@index([projects_count(sort: Desc)], map: "idx_collections_projects_count")
+  @@index([user_id], map: "idx_collections_user_id")
+}
+
+model comment_likes {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  comment_id String    @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  comments   comments  @relation(fields: [comment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, comment_id])
+}
+
+model comments {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content        String
+  user_id        String          @db.Uuid
+  project_id     String          @db.Uuid
+  parent_id      String?         @db.Uuid
+  thread_depth   Int?            @default(0)
+  likes_count    Int?            @default(0)
+  is_deleted     Boolean?        @default(false)
+  created_at     DateTime?       @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime?       @default(now()) @db.Timestamptz(6)
+  comment_likes  comment_likes[]
+  comments       comments?       @relation("commentsTocomments", fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  other_comments comments[]      @relation("commentsTocomments")
+  projects       projects        @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users          users           @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)], map: "idx_comments_created_at")
+  @@index([parent_id], map: "idx_comments_parent_id")
+  @@index([project_id], map: "idx_comments_project_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model project_invitations {
+  id                                          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id                                  String    @db.Uuid
+  inviter_id                                  String    @db.Uuid
+  invitee_id                                  String    @db.Uuid
+  status                                      String?   @default("pending")
+  created_at                                  DateTime? @default(now()) @db.Timestamptz(6)
+  responded_at                                DateTime? @db.Timestamptz(6)
+  users_project_invitations_invitee_idTousers users     @relation("project_invitations_invitee_idTousers", fields: [invitee_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_project_invitations_inviter_idTousers users     @relation("project_invitations_inviter_idTousers", fields: [inviter_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  projects                                    projects  @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([project_id, invitee_id, status])
+  @@index([invitee_id], map: "idx_project_invitations_invitee_id")
+  @@index([project_id], map: "idx_project_invitations_project_id")
+  @@index([status], map: "idx_project_invitations_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model project_members {
+  id                                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id                              String    @db.Uuid
+  user_id                                 String    @db.Uuid
+  role                                    String?   @default("owner")
+  invited_by                              String?   @db.Uuid
+  created_at                              DateTime? @default(now()) @db.Timestamptz(6)
+  users_project_members_invited_byTousers users?    @relation("project_members_invited_byTousers", fields: [invited_by], references: [id], onUpdate: NoAction)
+  projects                                projects  @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_project_members_user_idTousers    users     @relation("project_members_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([project_id, user_id])
+  @@index([project_id], map: "idx_project_members_project_id")
+  @@index([user_id], map: "idx_project_members_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model projects {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String
+  tagline             String
+  description         String
+  image_url           String?
+  website_url         String?
+  github_url          String?
+  category_id         String?               @db.Uuid
+  user_id             String                @db.Uuid
+  upvotes_count       Int?                  @default(0)
+  comments_count      Int?                  @default(0)
+  status              String?               @default("active")
+  created_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  video_url           String?
+  bookmarks           bookmarks[]
+  collection_projects collection_projects[]
+  comments            comments[]
+  project_invitations project_invitations[]
+  project_members     project_members[]
+  categories          categories?           @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  votes               votes[]
+
+  @@index([category_id], map: "idx_projects_category_id")
+  @@index([created_at(sort: Desc)], map: "idx_projects_created_at")
+  @@index([upvotes_count(sort: Desc)], map: "idx_projects_upvotes")
+  @@index([user_id], map: "idx_projects_user_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reports {
+  id                               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reporter_id                      String    @db.Uuid
+  target_type                      String
+  target_id                        String    @db.Uuid
+  reason                           String
+  details                          String?
+  status                           String    @default("pending")
+  resolved_by                      String?   @db.Uuid
+  resolved_at                      DateTime? @db.Timestamptz(6)
+  created_at                       DateTime  @default(now()) @db.Timestamptz(6)
+  users_reports_reporter_idTousers users     @relation("reports_reporter_idTousers", fields: [reporter_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_reports_resolved_byTousers users?    @relation("reports_resolved_byTousers", fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([reporter_id, target_type, target_id])
+  @@index([status], map: "idx_reports_status")
+  @@index([target_type, target_id], map: "idx_reports_target")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                                                        String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                     String                @unique
+  username                                                  String?               @unique
+  full_name                                                 String?
+  avatar_url                                                String?
+  bio                                                       String?
+  github_url                                                String?
+  linkedin_url                                              String?
+  website_url                                               String?
+  year_of_study                                             String?
+  department                                                String?
+  is_verified                                               Boolean?              @default(false)
+  created_at                                                DateTime?             @default(now()) @db.Timestamptz(6)
+  updated_at                                                DateTime?             @default(now()) @db.Timestamptz(6)
+  suspended_at                                              DateTime?             @db.Timestamptz(6)
+  entra_oid                                                 String?               @unique
+  bookmarks                                                 bookmarks[]
+  collections                                               collections[]
+  comment_likes                                             comment_likes[]
+  comments                                                  comments[]
+  project_invitations_project_invitations_invitee_idTousers project_invitations[] @relation("project_invitations_invitee_idTousers")
+  project_invitations_project_invitations_inviter_idTousers project_invitations[] @relation("project_invitations_inviter_idTousers")
+  project_members_project_members_invited_byTousers         project_members[]     @relation("project_members_invited_byTousers")
+  project_members_project_members_user_idTousers            project_members[]     @relation("project_members_user_idTousers")
+  projects                                                  projects[]
+  reports_reports_reporter_idTousers                        reports[]             @relation("reports_reporter_idTousers")
+  reports_reports_resolved_byTousers                        reports[]             @relation("reports_resolved_byTousers")
+  votes                                                     votes[]
+}
+
+model votes {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  project_id String    @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  projects   projects  @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, project_id], map: "votes_unique")
+  @@unique([user_id, project_id])
+  @@index([project_id], map: "idx_votes_project_id")
+}

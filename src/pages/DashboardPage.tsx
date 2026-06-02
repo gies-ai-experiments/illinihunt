@@ -43,7 +43,7 @@ type DashboardProject = {
   categories: {
     id: string
     name: string
-    color: string
+    color: string | null
     icon: string | null
   } | null
   membership_role?: string | null
@@ -397,7 +397,7 @@ export function DashboardPage() {
                                   }}
                                 >
                                   {project.categories.icon && (
-                                    <span className="mr-1" style={{ color: project.categories.color }}>{project.categories.icon}</span>
+                                    <span className="mr-1" style={{ color: project.categories.color ?? undefined }}>{project.categories.icon}</span>
                                   )}
                                   {project.categories.name}
                                 </Badge>

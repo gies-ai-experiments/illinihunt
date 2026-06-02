@@ -20,8 +20,8 @@ type UserProfile = {
   website_url: string | null
   year_of_study: string | null
   department: string | null
-  is_verified: boolean
-  created_at: string
+  is_verified: boolean | null
+  created_at: string | null
 }
 
 type UserProject = {
@@ -34,11 +34,11 @@ type UserProject = {
   github_url: string | null
   upvotes_count: number
   comments_count: number
-  created_at: string
+  created_at: string | null
   categories: {
     id: string
     name: string
-    color: string
+    color: string | null
     icon: string | null
   } | null
 }
@@ -199,7 +199,7 @@ export function UserProfilePage() {
                     )}
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Calendar className="w-4 h-4" />
-                      <span>Joined {new Date(profile.created_at).toLocaleDateString()}</span>
+                      <span>Joined {new Date(profile.created_at ?? 0).toLocaleDateString()}</span>
                     </div>
                   </div>
 
@@ -313,7 +313,7 @@ export function UserProfilePage() {
                 {projects.length > 0 ? (
                   <div className="space-y-3">
                     {[...projects]
-                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                      .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
                       .slice(0, 3)
                       .map((project) => (
                         <div key={project.id} className="text-sm">
@@ -321,7 +321,7 @@ export function UserProfilePage() {
                             {project.name}
                           </p>
                           <p className="text-muted-foreground">
-                            {new Date(project.created_at).toLocaleDateString()}
+                            {new Date(project.created_at ?? 0).toLocaleDateString()}
                           </p>
                         </div>
                       ))}

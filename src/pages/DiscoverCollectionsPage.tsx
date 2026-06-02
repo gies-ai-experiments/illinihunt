@@ -25,7 +25,7 @@ export function DiscoverCollectionsPage() {
         if (fetchError) {
           throw fetchError
         }
-        setCollections((data as PublicCollection[]) || [])
+        setCollections((data as unknown as PublicCollection[]) || [])
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load public collections')
       } finally {

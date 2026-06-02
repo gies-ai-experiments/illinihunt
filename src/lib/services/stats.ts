@@ -1,101 +1,49 @@
-import { supabase } from '../supabase'
-import { TRENDING_POOL_MULTIPLIER, MIN_TRENDING_POOL_SIZE } from '../trending'
-import { PROJECT_LIST_SELECT } from './query-constants'
+import { apiResult, type ServiceResult } from '@/lib/api'
+
+interface PlatformStats {
+  projectsCount: number
+  usersCount: number
+  categoriesCount: number
+}
 
 export class StatsService {
-  static async getPlatformStats() {
-    try {
-      const { count: projectsCount, error: projectsError } = await supabase
-        .from('projects')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active')
-
-      if (projectsError) throw projectsError
-
-      const { data: uniqueUsersCount, error: usersError } = await supabase
-        .rpc('get_unique_project_creators_count')
-
-      let usersCount: number
-
-      if (usersError) {
-        if (import.meta.env.DEV) {
-          console.warn('Database function get_unique_project_creators_count not found. Using fallback method.')
-        }
-        const { data: uniqueUsers, error: fallbackError } = await supabase
-          .from('projects')
-          .select('user_id')
-          .eq('status', 'active')
-
-        if (fallbackError) throw fallbackError
-        usersCount = new Set(uniqueUsers?.map(p => p.user_id)).size
-      } else {
-        usersCount = uniqueUsersCount || 0
-      }
-
-      const { count: categoriesCount, error: categoriesError } = await supabase
-        .from('categories')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true)
-
-      if (categoriesError) throw categoriesError
-
-      return {
-        data: {
-          projectsCount: projectsCount || 0,
-          usersCount,
-          categoriesCount: categoriesCount || 0
-        },
-        error: null
-      }
-    } catch (error) {
-      return {
-        data: null,
-        error: error instanceof Error ? error.message : 'Failed to load statistics'
-      }
+  static async getPlatformStats(): Promise<ServiceResult<PlatformStats>> {
+    // Compose from /api/stats + /api/categories. /api/stats already returns
+    // counts for users/projects/votes/comments.
+    const [stats, cats] = await Promise.all([
+      apiResult<{ users: number; projects: number; votes: number; comments: number }>('/stats'),
+      apiResult<{ categories: unknown[] }>('/categories'),
+    ])
+    if (stats.error) return { data: null, error: stats.error }
+    return {
+      data: {
+        projectsCount: stats.data?.projects ?? 0,
+        usersCount: stats.data?.users ?? 0,
+        categoriesCount: cats.data?.categories.length ?? 0,
+      },
+      error: null,
     }
   }
 
-  static async getTrendingProjects(limit = 10) {
-    return supabase
-      .from('projects')
-      .select(PROJECT_LIST_SELECT)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(Math.max(limit * TRENDING_POOL_MULTIPLIER, MIN_TRENDING_POOL_SIZE))
+  static async getTrendingProjects(limit = 10): Promise<ServiceResult<unknown[]>> {
+    // Backend trending endpoint is still TODO. Fall back to popular for now.
+    const result = await apiResult<{ projects: unknown[] }>(
+      `/projects?sort=popular&limit=${limit}`,
+    )
+    return { data: result.data?.projects ?? null, error: result.error }
   }
 
-  static async getFeaturedProjects(limit = 3) {
-    return supabase
-      .from('projects')
-      .select(PROJECT_LIST_SELECT)
-      .eq('status', 'active')
-      .order('upvotes_count', { ascending: false })
-      .limit(limit)
+  static async getFeaturedProjects(limit = 3): Promise<ServiceResult<unknown[]>> {
+    const result = await apiResult<{ projects: unknown[] }>(
+      `/projects?sort=popular&limit=${limit}`,
+    )
+    return { data: result.data?.projects ?? null, error: result.error }
   }
 
-  static async getRecentActivity(limit = 5) {
-    return supabase
-      .from('projects')
-      .select(`
-        id,
-        name,
-        tagline,
-        created_at,
-        users (
-          id,
-          username,
-          full_name,
-          avatar_url
-        ),
-        categories (
-          id,
-          name,
-          color,
-          icon
-        )
-      `)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(limit)
+  static async getRecentActivity(limit = 5): Promise<ServiceResult<unknown[]>> {
+    const result = await apiResult<{ projects: unknown[] }>(
+      `/projects?sort=recent&limit=${limit}`,
+    )
+    return { data: result.data?.projects ?? null, error: result.error }
   }
 }

@@ -84,11 +84,11 @@ export function ProjectTeamManager({
     ])
 
     if (!membersResult.error && membersResult.data) {
-      setMembers(membersResult.data)
+      setMembers(membersResult.data as never)
     }
 
     if (!invitationsResult.error && invitationsResult.data) {
-      setInvitations(invitationsResult.data)
+      setInvitations(invitationsResult.data as never)
     }
   }
 
@@ -113,7 +113,7 @@ export function ProjectTeamManager({
       setLoading(true)
       const { data } = await ProjectsService.searchUsersForInvite(query)
       if (!cancelled) {
-        setSearchResults(data || [])
+        setSearchResults((data ?? []) as never)
         setLoading(false)
       }
     }

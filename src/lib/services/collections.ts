@@ -1,180 +1,73 @@
-import { supabase } from '../supabase'
-import type { Database } from '@/types/database'
-import { requireAuth } from './auth-helpers'
-import { COLLECTION_WITH_USER_SELECT, PROJECT_WITH_JOINS_SELECT } from './query-constants'
+// Collections service — temporary stub during Azure migration.
+// The Express API endpoints (POST/PUT/DELETE /api/collections, etc.) are
+// stubbed as 501 TODO; this client side returns sensible empty/error shapes
+// so dependent pages compile and don't crash.
 
+import type { Database } from '@/types/database'
+import { apiResult, type ServiceResult } from '@/lib/api'
+
+type CollectionRow = Database['public']['Tables']['collections']['Row']
 type CollectionInsert = Database['public']['Tables']['collections']['Insert']
 type CollectionUpdate = Database['public']['Tables']['collections']['Update']
-type CollectionProjectInsert = Database['public']['Tables']['collection_projects']['Insert']
+
+const NOT_IMPL = { message: 'Collections: not implemented yet', code: '501' as const }
 
 export class CollectionService {
-  static async createCollection(collection: Omit<CollectionInsert, 'user_id'>) {
-    const user = await requireAuth('create collections')
-
-    const newCollection: CollectionInsert = {
-      ...collection,
-      user_id: user.id
-    }
-
-    return supabase
-      .from('collections')
-      .insert(newCollection)
-      .select(COLLECTION_WITH_USER_SELECT)
-      .single()
+  static async createCollection(
+    _collection: Omit<CollectionInsert, 'user_id'>,
+  ): Promise<ServiceResult<CollectionRow>> {
+    return { data: null, error: NOT_IMPL }
   }
 
-  static async getUserCollections(userId?: string) {
-    const { data: { user } } = await supabase.auth.getUser()
-    const targetUserId = userId || user?.id
-    if (!targetUserId) throw new Error('User ID required')
-
-    return supabase
-      .from('collections')
-      .select(COLLECTION_WITH_USER_SELECT)
-      .eq('user_id', targetUserId)
-      .order('updated_at', { ascending: false })
+  static async getUserCollections(_userId?: string): Promise<ServiceResult<CollectionRow[]>> {
+    return { data: [], error: null }
   }
 
-  static async getPublicCollections(limit = 20, offset = 0) {
-    return supabase
-      .from('public_collections_with_stats')
-      .select('*')
-      .range(offset, offset + limit - 1)
+  static async getPublicCollections(
+    _limit?: number,
+    _offset?: number,
+  ): Promise<ServiceResult<CollectionRow[]>> {
+    const result = await apiResult<{ collections: CollectionRow[] }>('/collections')
+    return { data: result.data?.collections ?? [], error: result.error }
   }
 
-  static async getCollection(collectionId: string, includeProjects = true) {
-    const baseQuery = supabase
-      .from('collections')
-      .select(COLLECTION_WITH_USER_SELECT)
-      .eq('id', collectionId)
-      .single()
-
-    if (!includeProjects) {
-      return baseQuery
-    }
-
-    const collectionResult = await baseQuery
-    if (collectionResult.error) return collectionResult
-
-    const projectsResult = await supabase
-      .from('collection_projects')
-      .select(`
-        id,
-        added_at,
-        projects (
-          ${PROJECT_WITH_JOINS_SELECT}
-        )
-      `)
-      .eq('collection_id', collectionId)
-      .order('added_at', { ascending: false })
-
-    return {
-      ...collectionResult,
-      data: collectionResult.data ? {
-        ...collectionResult.data,
-        projects: projectsResult.data || []
-      } : null
-    }
+  static async getCollection(
+    _id: string,
+    _includeProjects?: boolean,
+  ): Promise<ServiceResult<CollectionRow>> {
+    return { data: null, error: NOT_IMPL }
   }
 
-  static async updateCollection(collectionId: string, updates: CollectionUpdate) {
-    const user = await requireAuth('update collections')
-
-    return supabase
-      .from('collections')
-      .update(updates)
-      .eq('id', collectionId)
-      .eq('user_id', user.id)
-      .select()
-      .single()
+  static async updateCollection(
+    _id: string,
+    _updates: CollectionUpdate,
+  ): Promise<ServiceResult<CollectionRow>> {
+    return { data: null, error: NOT_IMPL }
   }
 
-  static async deleteCollection(collectionId: string) {
-    const user = await requireAuth('delete collections')
-
-    return supabase
-      .from('collections')
-      .delete()
-      .eq('id', collectionId)
-      .eq('user_id', user.id)
+  static async deleteCollection(_id: string): Promise<ServiceResult<{ ok: true }>> {
+    return { data: null, error: NOT_IMPL }
   }
 
-  static async addProjectToCollection(collectionId: string, projectId: string) {
-    const user = await requireAuth('modify collections')
-
-    const { data: collection, error: collectionError } = await supabase
-      .from('collections')
-      .select('user_id')
-      .eq('id', collectionId)
-      .single()
-
-    if (collectionError) throw collectionError
-    if (collection.user_id !== user.id) {
-      throw new Error('You can only modify your own collections')
-    }
-
-    const collectionProject: CollectionProjectInsert = {
-      collection_id: collectionId,
-      project_id: projectId
-    }
-
-    return supabase
-      .from('collection_projects')
-      .insert(collectionProject)
-      .select(`
-        *,
-        projects (
-          ${PROJECT_WITH_JOINS_SELECT}
-        )
-      `)
-      .single()
+  static async addProjectToCollection(
+    _collectionId: string,
+    _projectId: string,
+  ): Promise<ServiceResult<{ ok: true }>> {
+    return { data: null, error: NOT_IMPL }
   }
 
-  static async removeProjectFromCollection(collectionId: string, projectId: string) {
-    const user = await requireAuth('modify collections')
-
-    const { data: collection, error: collectionError } = await supabase
-      .from('collections')
-      .select('user_id')
-      .eq('id', collectionId)
-      .single()
-
-    if (collectionError) throw collectionError
-    if (collection.user_id !== user.id) {
-      throw new Error('You can only modify your own collections')
-    }
-
-    return supabase
-      .from('collection_projects')
-      .delete()
-      .eq('collection_id', collectionId)
-      .eq('project_id', projectId)
+  static async removeProjectFromCollection(
+    _collectionId: string,
+    _projectId: string,
+  ): Promise<ServiceResult<{ ok: true }>> {
+    return { data: null, error: NOT_IMPL }
   }
 
-  static async isProjectInCollection(collectionId: string, projectId: string) {
-    const { data, error } = await supabase
-      .from('collection_projects')
-      .select('id')
-      .eq('collection_id', collectionId)
-      .eq('project_id', projectId)
-      .single()
-
-    return !error && !!data
+  static async getCollectionProjects(_collectionId: string): Promise<ServiceResult<unknown[]>> {
+    return { data: [], error: null }
   }
 
-  static async getCollectionsWithProject(projectId: string) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { data: [], error: null }
-
-    return supabase
-      .from('collections')
-      .select(`
-        *,
-        collection_projects!inner (
-          project_id
-        )
-      `)
-      .eq('user_id', user.id)
-      .eq('collection_projects.project_id', projectId)
+  static async getCollectionsWithProject(_projectId: string): Promise<ServiceResult<unknown[]>> {
+    return { data: [], error: null }
   }
 }

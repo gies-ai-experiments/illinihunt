@@ -58,7 +58,9 @@ export function AddToCollectionModal({
       }
 
       if (!projectCollectionsResult.error && projectCollectionsResult.data) {
-        const collectionIds = new Set(projectCollectionsResult.data.map((c: Collection) => c.id))
+        const collectionIds = new Set(
+          (projectCollectionsResult.data as Collection[]).map((c) => c.id),
+        )
         setCollectionsWithProject(collectionIds)
       }
     } catch (error) {

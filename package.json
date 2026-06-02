@@ -18,6 +18,8 @@
     "mcp:start": "cd mcp-server && npm start"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.11.0",
+    "@azure/msal-react": "^5.4.2",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.14",

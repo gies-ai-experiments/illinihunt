@@ -26,9 +26,10 @@ window.addEventListener('vite:preloadError', (event) => {
   window.location.reload()
 })
 
-// Validate required environment variables before app initialization
-// This provides a user-friendly error instead of a blank page
-const requiredEnvVars = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'] as const
+// Validate required environment variables before app initialization.
+// Post-Azure-migration: Entra ID auth requires the Azure vars; the Supabase
+// vars are optional (only needed for legacy un-migrated admin/moderation flows).
+const requiredEnvVars = ['VITE_AZURE_TENANT_ID', 'VITE_AZURE_CLIENT_ID'] as const
 
 function validateEnvironment(): string | null {
   for (const key of requiredEnvVars) {

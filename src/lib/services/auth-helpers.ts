@@ -1,20 +1,16 @@
-import { supabase } from '../supabase'
+// Legacy auth helpers — kept for source compatibility.
+// Auth enforcement now lives in the Express API (JWKS validation).
+// Services no longer need to fetch a Supabase user before calling the API.
 
-/**
- * Require an authenticated user or throw.
- * Eliminates the repeated getUser() + null check boilerplate.
- */
-export async function requireAuth(action: string) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error(`Must be authenticated to ${action}`)
-  return user
-}
-
-/**
- * Check if an error indicates a missing table (votes, bookmarks, etc.)
- * PostgREST returns PGRST202 for missing relations and 406 for content-type mismatches.
- */
 export function isTableMissing(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false
   return error.code === 'PGRST202' || error.code === '406' || (error.message?.includes('406') ?? false)
+}
+
+// Deprecated. Throws — anything still calling this needs to be updated to call
+// the API directly (which enforces auth via Bearer token).
+export async function requireAuth(_action: string): Promise<never> {
+  throw new Error(
+    'requireAuth() is no longer used — services now call the Express API which enforces auth.',
+  )
 }

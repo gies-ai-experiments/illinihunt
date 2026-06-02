@@ -1,77 +1,46 @@
-import { supabase } from '../supabase'
-import type { Database } from '@/types/database'
-import { requireAuth } from './auth-helpers'
+import { apiResult, type ServiceResult } from '@/lib/api'
 
-type BookmarkInsert = Database['public']['Tables']['bookmarks']['Insert']
+interface Bookmark {
+  id: string
+  user_id: string
+  project_id: string
+  created_at: string | null
+  projects?: unknown
+}
 
 export class BookmarkService {
-  static async addBookmark(projectId: string) {
-    const user = await requireAuth('bookmark projects')
+  static async addBookmark(projectId: string): Promise<ServiceResult<Bookmark>> {
+    const result = await apiResult<{ bookmark: Bookmark }>('/bookmarks', {
+      method: 'POST',
+      body: JSON.stringify({ projectId }),
+    })
+    return { data: result.data?.bookmark ?? null, error: result.error }
+  }
 
-    const bookmark: BookmarkInsert = {
-      user_id: user.id,
-      project_id: projectId
+  static async removeBookmark(projectId: string): Promise<ServiceResult<{ ok: true }>> {
+    return apiResult<{ ok: true }>(`/bookmarks/${projectId}`, { method: 'DELETE' })
+  }
+
+  static async isBookmarked(projectId: string): Promise<boolean> {
+    // Fetch the user's bookmarks list and check membership.
+    // For pages that need many of these checks, prefer getUserBookmarks once.
+    const result = await apiResult<{ bookmarks: Bookmark[] }>('/bookmarks')
+    if (result.error || !result.data) return false
+    return result.data.bookmarks.some((b) => b.project_id === projectId)
+  }
+
+  static async getUserBookmarks(_userId?: string): Promise<ServiceResult<Bookmark[]>> {
+    // The API only returns the authenticated user's bookmarks; ignore userId arg.
+    const result = await apiResult<{ bookmarks: Bookmark[] }>('/bookmarks')
+    return { data: result.data?.bookmarks ?? null, error: result.error }
+  }
+
+  static async getUserBookmarksCount(_userId?: string): Promise<ServiceResult<null>> {
+    const result = await apiResult<{ bookmarks: Bookmark[] }>('/bookmarks')
+    return {
+      data: null,
+      error: result.error,
+      count: result.data?.bookmarks.length ?? null,
     }
-
-    return supabase
-      .from('bookmarks')
-      .insert(bookmark)
-      .select()
-      .single()
-  }
-
-  static async removeBookmark(projectId: string) {
-    const user = await requireAuth('remove bookmarks')
-
-    return supabase
-      .from('bookmarks')
-      .delete()
-      .eq('project_id', projectId)
-      .eq('user_id', user.id)
-  }
-
-  static async isBookmarked(projectId: string) {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return false
-
-    try {
-      const { data, error } = await supabase
-        .from('bookmarks')
-        .select('id')
-        .eq('project_id', projectId)
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (error && (error.code === 'PGRST202' || error.code === '406' || error.message.includes('406'))) {
-        return false
-      }
-
-      return !error && !!data
-    } catch {
-      return false
-    }
-  }
-
-  static async getUserBookmarks(userId?: string) {
-    const { data: { user } } = await supabase.auth.getUser()
-    const targetUserId = userId || user?.id
-    if (!targetUserId) throw new Error('User ID required')
-
-    return supabase
-      .from('user_bookmarks_with_projects')
-      .select('*')
-      .eq('user_id', targetUserId)
-      .order('bookmarked_at', { ascending: false })
-  }
-
-  static async getUserBookmarksCount(userId?: string) {
-    const { data: { user } } = await supabase.auth.getUser()
-    const targetUserId = userId || user?.id
-    if (!targetUserId) throw new Error('User ID required')
-
-    return supabase
-      .from('bookmarks')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', targetUserId)
   }
 }
