@@ -1,0 +1,45 @@
+name: Deploy API to Azure Web App
+
+# Builds the Express API container on GitHub's runner, pushes it to Azure
+# Container Registry. App Service has continuous deployment enabled with an ACR
+# webhook, so the push automatically triggers a pull + restart of the
+# `illinihunt` web app — no Azure credentials needed in CI beyond ACR push.
+
+on:
+  push:
+    branches: [main, azure-migration]
+    paths:
+      - 'api/**'
+      - '.github/workflows/azure-webapp-api.yml'
+  workflow_dispatch: {}
+
+env:
+  ACR_LOGIN_SERVER: illinihuntdevacr.azurecr.io
+  IMAGE_NAME: illinihunt-api
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: illinihuntdevacr.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # App Service's ACR webhook (continuous deployment) picks up the :latest
+      # push and redeploys automatically — nothing further needed here.
+      - name: Note
+        run: echo "Pushed :latest and :${{ github.sha }}. App Service will auto-pull via ACR webhook."
