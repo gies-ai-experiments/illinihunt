@@ -4,7 +4,6 @@ import { useRealtimeVotesContext } from '@/contexts/RealtimeVotesContext'
 import { useCategories } from '@/hooks/useCategories'
 import { useAuth } from '@/hooks/useAuth'
 import { ProjectsService } from '@/lib/database'
-import { supabase } from '@/lib/supabase'
 import { DEFAULT_CATEGORY_COLOR } from '@/lib/constants'
 import { ProjectCard } from './ProjectCard'
 import { Button } from '@/components/ui/button'
@@ -95,39 +94,19 @@ export function ProjectGrid({ selectedCategory: externalCategory }: ProjectGridP
       if (user?.id && projectData.length > 0) {
         const projectIds = projectData.map(project => project.id)
         try {
-          const [votesResult, bookmarksResult] = await withTimeout(Promise.all([
-            supabase
-              .from('votes')
-              .select('project_id')
-              .eq('user_id', user.id)
-              .in('project_id', projectIds),
-            supabase
-              .from('bookmarks')
-              .select('project_id')
-              .eq('user_id', user.id)
-              .in('project_id', projectIds)
-          ]), USER_INTERACTIONS_TIMEOUT_MS, 'Timed out while loading user interaction status')
-
-          const ignoreVotesError = !!votesResult.error && (votesResult.error.code === 'PGRST202' || votesResult.error.code === '406')
-          const ignoreBookmarksError = !!bookmarksResult.error && (bookmarksResult.error.code === 'PGRST202' || bookmarksResult.error.code === '406')
-
-          if (votesResult.error && !ignoreVotesError) {
-            throw votesResult.error
-          }
-          if (bookmarksResult.error && !ignoreBookmarksError) {
-            throw bookmarksResult.error
-          }
+          const { voted, bookmarked } = await withTimeout(
+            ProjectsService.getUserInteractions(projectIds),
+            USER_INTERACTIONS_TIMEOUT_MS,
+            'Timed out while loading user interaction status'
+          )
 
           if (requestId !== requestIdRef.current) return
-
-          const votedProjectIds = new Set((votesResult.data || []).map(vote => vote.project_id))
-          const bookmarkedProjectIds = new Set((bookmarksResult.data || []).map(bookmark => bookmark.project_id))
 
           setProjects(
             projectData.map(project => ({
               ...project,
-              has_voted: votedProjectIds.has(project.id),
-              is_bookmarked: bookmarkedProjectIds.has(project.id)
+              has_voted: voted.has(project.id),
+              is_bookmarked: bookmarked.has(project.id)
             }))
           )
         } catch (_interactionError) {
@@ -242,26 +221,17 @@ export function ProjectGrid({ selectedCategory: externalCategory }: ProjectGridP
             <Button 
               variant="outline" 
               className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 hover:border-white/40 shadow-lg font-medium"
-              onClick={async () => {
-                try {
-                  const { data: { session } } = await supabase.auth.getSession()
-                  if (session) {
-                    navigate('/submit')
-                  } else {
-                    // If not authenticated, redirect to home with a sign-in prompt
-                    navigate('/', { 
-                      state: { 
-                        authRedirect: '/submit',
-                        message: 'Please sign in to submit a project' 
-                      }
-                    })
-                  }
-                } catch (error) {
-                  if (import.meta.env.DEV) {
-                    console.error('Auth check failed:', error)
-                  }
-                  // Fallback to normal navigation
+              onClick={() => {
+                if (user) {
                   navigate('/submit')
+                } else {
+                  // If not authenticated, redirect to home with a sign-in prompt
+                  navigate('/', {
+                    state: {
+                      authRedirect: '/submit',
+                      message: 'Please sign in to submit a project'
+                    }
+                  })
                 }
               }}
             >
@@ -437,24 +407,16 @@ export function ProjectGrid({ selectedCategory: externalCategory }: ProjectGridP
           </p>
           <Button 
             className="bg-uiuc-blue hover:bg-uiuc-blue/90"
-            onClick={async () => {
-              try {
-                const { data: { session } } = await supabase.auth.getSession()
-                if (session) {
-                  navigate('/submit')
-                } else {
-                  navigate('/', { 
-                    state: { 
-                      authRedirect: '/submit',
-                      message: 'Please sign in to submit a project' 
-                    }
-                  })
-                }
-              } catch (error) {
-                if (import.meta.env.DEV) {
-                  console.error('Auth check failed:', error)
-                }
+            onClick={() => {
+              if (user) {
                 navigate('/submit')
+              } else {
+                navigate('/', {
+                  state: {
+                    authRedirect: '/submit',
+                    message: 'Please sign in to submit a project'
+                  }
+                })
               }
             }}
           >

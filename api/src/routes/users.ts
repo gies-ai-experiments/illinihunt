@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { requireAuth } from '../middleware/auth.js'
 import { requireDbUser } from '../lib/dbUser.js'
+import { isAdminEmail } from '../middleware/requireAdmin.js'
 
 const router = Router()
 
@@ -29,6 +30,40 @@ router.get('/search', requireAuth, async (req, res) => {
     orderBy: [{ username: 'asc' }, { email: 'asc' }],
   })
   res.json({ users })
+})
+
+// GET /api/users/me/is-admin — replaces the old is_admin() RPC
+router.get('/me/is-admin', requireAuth, async (req, res) => {
+  res.json({ isAdmin: isAdminEmail(req.user?.email) })
+})
+
+// GET /api/users/me/interactions?projectIds=id1,id2,...
+// One round-trip: which of these projects has the current user voted on / bookmarked.
+router.get('/me/interactions', requireAuth, async (req, res) => {
+  const user = await requireDbUser(req, res)
+  if (!user) return
+
+  const ids = String(req.query.projectIds ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 500)
+  if (ids.length === 0) return res.json({ voted: [], bookmarked: [] })
+
+  const [votes, bookmarks] = await Promise.all([
+    prisma.votes.findMany({
+      where: { user_id: user.id, project_id: { in: ids } },
+      select: { project_id: true },
+    }),
+    prisma.bookmarks.findMany({
+      where: { user_id: user.id, project_id: { in: ids } },
+      select: { project_id: true },
+    }),
+  ])
+  res.json({
+    voted: votes.map((v) => v.project_id),
+    bookmarked: bookmarks.map((b) => b.project_id),
+  })
 })
 
 // GET /api/users/me/invitations — pending invites where current user is invitee

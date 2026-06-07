@@ -1,7 +1,6 @@
 
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import { Suspense, lazy, useEffect } from 'react'
-import { SpeedInsights } from '@vercel/speed-insights/react'
 import { Toaster } from 'sonner'
 import { useAuth } from '@/hooks/useAuth'
 import { useAdminAuth } from '@/hooks/useAdminAuth'
@@ -365,7 +364,6 @@ function App() {
               <RealtimeVotesProvider>
                 <AppContent />
                 <GitHubPopupButton />
-                <SpeedInsights />
                 <Toaster
                   position="top-right"
                   richColors

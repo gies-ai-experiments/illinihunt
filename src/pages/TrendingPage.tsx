@@ -2,8 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useRealtimeVotesContext } from '@/contexts/RealtimeVotesContext'
 import { useAuth } from '@/hooks/useAuth'
-import { StatsService } from '@/lib/database'
-import { supabase } from '@/lib/supabase'
+import { StatsService, ProjectsService } from '@/lib/database'
 import { rankByTrending, periodLabel, MIN_TRENDING_POOL_SIZE, type TrendingPeriod } from '@/lib/trending'
 import { ProjectCard } from '@/components/project/ProjectCard'
 import { Button } from '@/components/ui/button'
@@ -65,32 +64,13 @@ export function TrendingPage() {
 
       if (user?.id && projectData.length > 0) {
         const projectIds = projectData.map((p) => p.id)
-        const [votesResult, bookmarksResult] = await Promise.all([
-          supabase
-            .from('votes')
-            .select('project_id')
-            .eq('user_id', user.id)
-            .in('project_id', projectIds),
-          supabase
-            .from('bookmarks')
-            .select('project_id')
-            .eq('user_id', user.id)
-            .in('project_id', projectIds),
-        ])
-
-        // Check for query errors before using data
-        const votedIds = new Set(
-          (!votesResult.error && votesResult.data ? votesResult.data : []).map((v) => v.project_id),
-        )
-        const bookmarkedIds = new Set(
-          (!bookmarksResult.error && bookmarksResult.data ? bookmarksResult.data : []).map((b) => b.project_id),
-        )
+        const { voted, bookmarked } = await ProjectsService.getUserInteractions(projectIds)
 
         setAllProjects(
           projectData.map((p) => ({
             ...p,
-            has_voted: votedIds.has(p.id),
-            is_bookmarked: bookmarkedIds.has(p.id),
+            has_voted: voted.has(p.id),
+            is_bookmarked: bookmarked.has(p.id),
           })),
         )
       } else {

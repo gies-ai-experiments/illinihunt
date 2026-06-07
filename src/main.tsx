@@ -2,7 +2,6 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
-import { ensureSupabaseInitialized } from './lib/supabaseInit'
 import { initSentry } from './lib/sentry'
 
 // Initialize observability before anything else so init failures are captured
@@ -58,19 +57,10 @@ const envError = validateEnvironment()
 if (envError) {
   renderError(envError)
 } else {
-  // Initialize Supabase and render the app
-  ensureSupabaseInitialized()
-    .then(() => {
-      ReactDOM.createRoot(document.getElementById('root')!).render(
-        <React.StrictMode>
-          <App />
-        </React.StrictMode>,
-      )
-    })
-    .catch((error) => {
-      if (import.meta.env.DEV) {
-        console.error('Failed to initialize app:', error)
-      }
-      renderError(error instanceof Error ? error.message : 'Failed to initialize application')
-    })
+  // MSAL session restoration happens inside AuthProvider; just render.
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  )
 }

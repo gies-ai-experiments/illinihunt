@@ -55,11 +55,12 @@ export function setSentryUser(user: { id: string; username?: string | null } | n
 
 /**
  * Normalize anything throwable into a real Error so Sentry can group it
- * sensibly. Supabase returns plain objects shaped {code, details, hint,
- * message} which Sentry titles as "Fl" (minified frame) — useless. Wrap
- * those into a proper Error and preserve the original fields as context.
+ * sensibly. Structured API/DB errors arrive as plain objects shaped
+ * {code, details, hint, message} which Sentry titles as "Fl" (minified
+ * frame) — useless. Wrap those into a proper Error and preserve the
+ * original fields as context.
  */
-function toError(error: unknown): { error: Error; supabaseFields?: Record<string, unknown> } {
+function toError(error: unknown): { error: Error; errorFields?: Record<string, unknown> } {
   if (error instanceof Error) return { error }
 
   if (error && typeof error === 'object') {
@@ -68,11 +69,11 @@ function toError(error: unknown): { error: Error; supabaseFields?: Record<string
       ? obj.message
       : 'Unknown error'
     const wrapped = new Error(message)
-    // If this looks Supabase-shaped, keep the auxiliary fields as extras.
+    // If this looks like a structured API/DB error, keep the aux fields as extras.
     if ('code' in obj || 'hint' in obj || 'details' in obj) {
       return {
         error: wrapped,
-        supabaseFields: {
+        errorFields: {
           code: obj.code,
           hint: obj.hint,
           details: obj.details,
@@ -105,9 +106,9 @@ export function captureFunnelEvent(name: string, extra?: Record<string, unknown>
  * every toast surface ALSO produces a Sentry event we can investigate.
  */
 export function captureError(error: unknown, context?: { operation?: string; extra?: Record<string, unknown> }): void {
-  const { error: normalized, supabaseFields } = toError(error)
+  const { error: normalized, errorFields } = toError(error)
   Sentry.captureException(normalized, {
     tags: context?.operation ? { operation: context.operation } : undefined,
-    extra: { ...context?.extra, ...(supabaseFields ?? {}) },
+    extra: { ...context?.extra, ...(errorFields ?? {}) },
   })
 }

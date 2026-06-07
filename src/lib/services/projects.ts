@@ -131,6 +131,21 @@ export class ProjectsService {
     return result.data?.[projectId]?.hasVoted ?? false
   }
 
+  // Batch: which of these projects has the current user voted on / bookmarked.
+  // One round-trip. Returns empty sets when not authenticated.
+  static async getUserInteractions(
+    projectIds: string[],
+  ): Promise<{ voted: Set<string>; bookmarked: Set<string> }> {
+    if (projectIds.length === 0) return { voted: new Set(), bookmarked: new Set() }
+    const result = await apiResult<{ voted: string[]; bookmarked: string[] }>(
+      `/users/me/interactions?projectIds=${projectIds.join(',')}`,
+    )
+    return {
+      voted: new Set(result.data?.voted ?? []),
+      bookmarked: new Set(result.data?.bookmarked ?? []),
+    }
+  }
+
   static async getUserProfile(userId: string): Promise<ServiceResult<UserRow>> {
     const result = await apiResult<{ user: UserRow }>(`/users/${userId}`)
     // is_verified may come back as boolean | null; coerce to boolean for caller types.

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { apiResult } from '@/lib/api'
 import { ILLINOIS_DOMAIN } from '@/lib/constants'
 
 /**
  * Hook to check if current user has admin privileges.
  *
- * Admin status is determined by the database (single source of truth).
- * The is_admin() function in the database checks against the admin email list.
+ * Admin status is determined by the API (single source of truth) via
+ * GET /api/users/me/is-admin, which checks the ADMIN_EMAILS allowlist on
+ * the server. Replaces the old Supabase is_admin() RPC.
  */
 export function useAdminAuth() {
   const { user, loading: authLoading } = useAuth()
@@ -15,36 +16,33 @@ export function useAdminAuth() {
   const [adminLoading, setAdminLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
     async function checkAdminStatus() {
       if (!user?.email) {
-        setIsAdmin(false)
-        setAdminLoading(false)
+        if (!cancelled) {
+          setIsAdmin(false)
+          setAdminLoading(false)
+        }
         return
       }
 
-      try {
-        // Call the database function to check admin status
-        // This is the single source of truth for admin emails
-        const { data, error } = await supabase.rpc('is_admin')
-
-        if (error) {
-          // If RPC fails (e.g., function doesn't exist yet), fall back to false
-          if (import.meta.env.DEV) {
-            console.warn('Admin check failed:', error.message)
-          }
-          setIsAdmin(false)
-        } else {
-          setIsAdmin(Boolean(data))
-        }
-      } catch {
+      const { data, error } = await apiResult<{ isAdmin: boolean }>('/users/me/is-admin')
+      if (cancelled) return
+      if (error) {
+        if (import.meta.env.DEV) console.warn('Admin check failed:', error.message)
         setIsAdmin(false)
-      } finally {
-        setAdminLoading(false)
+      } else {
+        setIsAdmin(Boolean(data?.isAdmin))
       }
+      setAdminLoading(false)
     }
 
     if (!authLoading) {
+      setAdminLoading(true)
       checkAdminStatus()
+    }
+    return () => {
+      cancelled = true
     }
   }, [user?.email, authLoading])
 
