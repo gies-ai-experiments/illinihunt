@@ -43,28 +43,20 @@ jobs:
           VITE_AZURE_API_CLIENT_ID: ${{ vars.VITE_AZURE_API_CLIENT_ID }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
-      # ── API (api/) ──────────────────────────────────────────────────────
-      - name: Build API
-        working-directory: ./api
-        run: |
-          npm ci
-          npm run build
-          # Prune dev deps FIRST — this wipes the generated node_modules/.prisma
-          # client — then regenerate it into the pruned tree so the deployed
-          # package actually contains the Prisma client (prisma CLI is a prod
-          # dep now, so it survives the prune).
-          npm prune --omit=dev
-          npx prisma generate
-
-      # ── Assemble one self-contained package ─────────────────────────────
+      # ── Assemble package: API *source* + prebuilt frontend ─────────────
+      # App Service Oryx builds the API on the host (npm install + npm run build
+      # → prisma generate + tsc), which is the deploy path proven to work for
+      # this app. The frontend is prebuilt here and shipped as static files in
+      # public/, which Express serves. (Shipping prebuilt node_modules without
+      # Oryx did not boot on the blessed Node image.)
       - name: Assemble deploy package
         run: |
           mkdir -p azure-package
-          cp -R api/dist azure-package/dist
-          cp -R api/node_modules azure-package/node_modules
+          cp -R api/src azure-package/src
           cp -R api/prisma azure-package/prisma
           cp api/package.json azure-package/package.json
           cp api/package-lock.json azure-package/package-lock.json
+          cp api/tsconfig.json azure-package/tsconfig.json
           # Frontend build → public/ (Express serves this as the SPA)
           cp -R dist azure-package/public
 
