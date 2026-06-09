@@ -5,12 +5,12 @@
 ## Project Essentials
 
 **IlliniHunt V2** - Product Hunt for University of Illinois
-**Live**: https://illinihunt.org (apex → **Azure Static Web Apps**, DNS-only) | `www` still on Vercel — **migration in progress**
+**Live**: https://illinihunt.org + https://www.illinihunt.org (both → **Azure Static Web Apps**, Cloudflare DNS-only) — fully off Vercel
 **Repo**: https://github.com/gies-ai-experiments/illinihunt
 **Legacy Supabase Project**: `catzwowmxluzwbhdyhnf` (deployed app no longer calls it — historical-data migration may still be pending, issue #93)
 **Stack**: React 18 + TypeScript + **Azure App Service API** (`illinihunt.azurewebsites.net/api`) + **Entra ID (MSAL) auth** + **Azure Static Web Apps** frontend (migrating off Vercel) + Cloudflare DNS
 
-> **⚠️ Migration in progress (2026-06-08):** Frontend Vercel → Azure Static Web Apps (`polite-desert-0406a5c10.7.azurestaticapps.net`); backend Supabase → Azure App Service + Entra ID. **Verified from the live bundle (2026-06-08):** deployed app calls `https://illinihunt.azurewebsites.net/api` + Entra (`login.microsoftonline.com/common`); **zero Supabase references remain**. Apex `illinihunt.org` is cut over (Cloudflare DNS-only CNAME → SWA, valid Azure-managed cert). `www.illinihunt.org` is **still on Vercel** — blocked on Azure issuing a cert for it (issue #96). Deep architecture/setup docs below still describe the old Vercel+Supabase stack and are stale until the cutover fully completes — do not trust per-doc Vercel/Supabase references.
+> **Migration (2026-06-08, frontend cutover complete):** Frontend Vercel → Azure Static Web Apps (`polite-desert-0406a5c10.7.azurestaticapps.net`, RG `DL_ResourceGroup_01`, SWA `illinihunt-dev`); backend Supabase → Azure App Service (`illinihunt.azurewebsites.net/api`, App `illinihunt`) + Entra ID. **Both apex and `www` now serve from Azure** (Cloudflare DNS-only CNAMEs → SWA, valid Azure-managed certs); fully off Vercel. Deployed app calls the Azure API + Entra; **zero Supabase references remain**. Auth is single-tenant UIUC + `@illinois.edu` (verified, not a regression). **Still stale:** deep architecture/setup docs below still describe the old Vercel+Supabase stack — don't trust per-doc Vercel/Supabase references. Remaining backend hardening tracked in issue #98; apex↔www canonical redirect is an open minor item (SWA has no native host-based redirect).
 
 ## Quick Setup
 
