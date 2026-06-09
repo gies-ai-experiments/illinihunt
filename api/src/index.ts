@@ -10,6 +10,10 @@ if (process.env.SENTRY_DSN) {
 }
 
 import express from 'express'
+// Patches Express 4 so rejected promises in async route handlers are forwarded
+// to errorHandler instead of becoming an unhandledRejection (which crashes the
+// Node process under Node 22). Must be imported before routers handle requests.
+import 'express-async-errors'
 import cors from 'cors'
 import rateLimit from 'express-rate-limit'
 
