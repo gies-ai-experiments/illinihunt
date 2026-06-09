@@ -33,6 +33,10 @@ import uploadRouter from './routes/upload.js'
 import authRouter from './routes/auth.js'
 import reportsRouter from './routes/reports.js'
 
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { existsSync } from 'node:fs'
+
 const app = express()
 const port = Number(process.env.PORT ?? 3000)
 
@@ -73,7 +77,39 @@ app.use('/api/admin', adminRouter)
 app.use('/api/upload', uploadRouter)
 app.use('/api/reports', reportsRouter)
 
-app.use(notFoundHandler)
+// Unmatched /api/* paths → JSON 404 (don't fall through to the SPA).
+app.use('/api', notFoundHandler)
+
+// ─── Serve the React frontend from the same web app ────────────────────────
+// The Vite build is copied into ./public (next to dist/) at deploy time, so a
+// single App Service serves both the API (/api/*) and the SPA. When the build
+// isn't present (e.g. running the API standalone in local dev), this is a
+// no-op and the frontend is served separately by `vite dev`.
+const frontendDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
+if (existsSync(path.join(frontendDir, 'index.html'))) {
+  // Hashed assets can be cached hard; index.html must not be (so new deploys
+  // are picked up). express.static sets sensible defaults; we override below.
+  app.use(
+    express.static(frontendDir, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-cache')
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=86400')
+        }
+      },
+    }),
+  )
+  // SPA fallback: any non-API GET returns index.html so client-side routing works.
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next()
+    res.sendFile(path.join(frontendDir, 'index.html'))
+  })
+} else {
+  console.warn('[api] no frontend build at ./public — serving API only')
+}
+
 app.use(errorHandler)
 
 app.listen(port, () => {

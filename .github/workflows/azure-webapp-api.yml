@@ -1,25 +1,26 @@
-name: Build and deploy Node.js API to Azure Web App - illinihunt
+name: Build and deploy IlliniHunt (frontend + API) to Azure Web App
 
-# Follows the MindForum pattern: build a fully self-contained package on the
-# runner (dist + production node_modules + prisma), then deploy that prebuilt
-# package via azure/webapps-deploy. App Service does NOT run an Oryx build
-# (SCM_DO_BUILD_DURING_DEPLOYMENT=false) — OneDeploy just lays down files, which
-# is what makes this reliable. App Service starts `node dist/index.js`.
+# Single-web-app deploy (MindForum pattern): one Azure App Service serves BOTH
+# the React SPA and the Express API. The runner builds the frontend (Vite) and
+# the API (tsc + prisma), assembles a self-contained package, and ships it.
+# Express serves /api/* and falls back to the SPA's index.html for everything
+# else. No Static Web App, no container, no server-side Oryx build.
 
 on:
   push:
     branches: [main, azure-migration]
     paths:
       - 'api/**'
+      - 'src/**'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'package.json'
       - '.github/workflows/azure-webapp-api.yml'
   workflow_dispatch: {}
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./api
     steps:
       - uses: actions/checkout@v4
 
@@ -27,31 +28,46 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-          cache: npm
-          cache-dependency-path: api/package-lock.json
 
-      - name: Install + build (prisma generate + tsc)
+      # ── Frontend (repo root) ────────────────────────────────────────────
+      - name: Build frontend
         run: |
           npm ci
           npm run build
+        env:
+          # Same-origin now: the SPA and API share a host, so the API base is
+          # a relative path. No CORS needed.
+          VITE_API_URL: /api
+          VITE_AZURE_TENANT_ID: ${{ vars.VITE_AZURE_TENANT_ID }}
+          VITE_AZURE_CLIENT_ID: ${{ vars.VITE_AZURE_CLIENT_ID }}
+          VITE_AZURE_API_CLIENT_ID: ${{ vars.VITE_AZURE_API_CLIENT_ID }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
-      - name: Prune to production dependencies (keeps generated Prisma client)
-        run: npm prune --omit=dev
+      # ── API (api/) ──────────────────────────────────────────────────────
+      - name: Build API
+        working-directory: ./api
+        run: |
+          npm ci
+          npm run build
+          npm prune --omit=dev
 
-      - name: Assemble self-contained deploy package
+      # ── Assemble one self-contained package ─────────────────────────────
+      - name: Assemble deploy package
         run: |
           mkdir -p azure-package
-          cp -R dist azure-package/dist
-          cp -R node_modules azure-package/node_modules
-          cp -R prisma azure-package/prisma
-          cp package.json azure-package/package.json
-          cp package-lock.json azure-package/package-lock.json
+          cp -R api/dist azure-package/dist
+          cp -R api/node_modules azure-package/node_modules
+          cp -R api/prisma azure-package/prisma
+          cp api/package.json azure-package/package.json
+          cp api/package-lock.json azure-package/package-lock.json
+          # Frontend build → public/ (Express serves this as the SPA)
+          cp -R dist azure-package/public
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: api-app
-          path: api/azure-package
+          name: illinihunt-app
+          path: azure-package
 
   deploy:
     runs-on: ubuntu-latest
@@ -60,7 +76,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: api-app
+          name: illinihunt-app
           path: azure-package
 
       - name: Deploy to Azure Web App
