@@ -80,7 +80,7 @@ Repo: `gies-ai-experiments/illinihunt`. GitHub Actions, branch `azure-migration`
 Secrets / variables (GitHub):
 - `AZURE_STATIC_WEB_APPS_API_TOKEN` — SWA deploy token
 - `ACR_USERNAME` / `ACR_PASSWORD` — registry push creds (container workflow)
-- `AZURE_WEBAPP_PUBLISH_PROFILE`, `AZURE_WEBAPP_PUBLISH_PROFILE_STAGING` — App Service deploy (code-based attempts; see §4)
+- `AZURE_WEBAPP_PUBLISH_PROFILE`, `AZURE_WEBAPP_PUBLISH_PROFILE_STAGING` — App Service deploy (code-based attempts; see §5)
 - Vars: `VITE_AZURE_TENANT_ID`, `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_API_CLIENT_ID`, `VITE_API_URL`
 
 ### Build-time frontend env
@@ -128,7 +128,62 @@ az webapp log download --name illinihunt --resource-group DL_ResourceGroup_01 --
 
 ---
 
-## 4. Decision record: container vs. code-based ("blessed Node") API hosting
+## 4. MindForum vs. IlliniHunt — why they deploy differently
+
+Both apps live on the **same App Service plan** (`dl-appplan-01`) in the same resource
+group, yet they deploy in completely different ways. This trips people up ("just do what
+MindForum does"), so here's the precise difference.
+
+### Side-by-side
+
+| | **MindForum** | **IlliniHunt** |
+|---|---|---|
+| App shape | **One** app: Next.js serves UI **and** API together | **Two** pieces: SPA (frontend) + Express API (backend) |
+| Frontend framework | **Next.js** (React framework w/ a built-in server) | **Vite** (builds a *static* React SPA — no server) |
+| Backend | Part of the same Next.js process (`server.js`) | Separate **Express** service |
+| ORM | Prisma | Prisma *(same — not the differentiator)* |
+| Build output | Next.js **standalone** bundle — a self-contained server folder | Static `dist/` (frontend) + compiled `dist/` + `node_modules` (API) |
+| App Service runtime | **Blessed Node** (built-in), runs `node server.js` | **Container** (image pulled from ACR) |
+| Needs a registry (ACR)? | No | Yes |
+| Needs a separate Static Web App? | No (Next serves its own pages) | Yes (the SPA is hosted on SWA) |
+
+### The crux: Next.js *standalone* vs. a generic Node app
+
+The reason MindForum deploys cleanly as code (no container) is **entirely** about what
+Next.js produces:
+
+- `next build` with `output: 'standalone'` emits a **self-contained server bundle** — it
+  traces exactly the files it needs, inlines a minimal `node_modules`, and ships a
+  `server.js` the platform's blessed Node runtime recognizes and launches directly.
+- There is effectively **no external `node_modules` tree to compress**, and the startup is
+  the conventional `node server.js`. So App Service's built-in Node hosting "just works."
+
+IlliniHunt's API is a **generic Express app**. Its deploy artifact is a normal
+`node_modules` tree + a compiled entrypoint. On the blessed Node image that combination
+hits the platform gotcha documented in §5:
+
+- App Service **compresses `node_modules` → `node_modules.tar.gz`** and depends on its
+  auto-generated startup to extract it; our custom `node dist/index.js` startup bypasses
+  that extraction → runtime can't find packages → boot fails.
+- Next.js standalone never hits this because it isn't shipping a normal `node_modules`
+  tree in the first place.
+
+### So "why can't IlliniHunt follow MindForum's pattern?"
+
+Because following MindForum's *deployment* pattern requires MindForum's *application*
+pattern — i.e. **being a Next.js app**. IlliniHunt is a Vite SPA + Express API. To deploy
+code-based the way MindForum does, IlliniHunt would have to be **rewritten as a Next.js
+app** (move the SPA into Next pages/app-router, fold the Express routes into Next API
+routes / route handlers, adopt `output: 'standalone'`). That's a multi-week frontend +
+backend rewrite — out of scope for the Supabase→Azure migration, whose mandate was
+*minimal change*.
+
+**The container gets IlliniHunt the same end result** (one reliable web app, or SPA+API
+split) **without** that rewrite — which is why it's the chosen path. See §5.
+
+---
+
+## 5. Decision record: container vs. code-based ("blessed Node") API hosting
 
 **Decision: host the API as a container on App Service.** Rationale below — read before
 attempting to "simplify" to a code-based Node deploy.
@@ -185,7 +240,7 @@ web app became a goal.
 
 ---
 
-## 5. Known follow-ups / housekeeping
+## 6. Known follow-ups / housekeeping
 - Decommission the old `illinihunt-dev-db` Postgres + empty `illinihunt-dev` RG after the
   rollback window.
 - Rotate the Supabase service-role key used during migration; retire the Supabase project.
