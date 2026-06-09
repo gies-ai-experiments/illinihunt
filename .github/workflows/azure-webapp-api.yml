@@ -1,9 +1,12 @@
 name: Deploy API to Azure Web App
 
-# Builds the Express API container on GitHub's runner, pushes it to Azure
-# Container Registry. App Service has continuous deployment enabled with an ACR
-# webhook, so the push automatically triggers a pull + restart of the
-# `illinihunt` web app — no Azure credentials needed in CI beyond ACR push.
+# Code-based (non-container) deploy of the Express API to Azure App Service
+# `illinihunt`. Ships the api/ source; App Service's Oryx build runs
+# `npm ci` + `npm run build` (prisma generate + tsc) on its Linux/Node 22
+# runtime, then starts `node dist/index.js`. No container / ACR involved.
+#
+# (SCM_DO_BUILD_DURING_DEPLOYMENT=true + ENABLE_ORYX_BUILD=true are set as
+# app settings on the web app, which is what triggers the server-side build.)
 
 on:
   push:
@@ -13,33 +16,18 @@ on:
       - '.github/workflows/azure-webapp-api.yml'
   workflow_dispatch: {}
 
-env:
-  ACR_LOGIN_SERVER: illinihuntdevacr.azurecr.io
-  IMAGE_NAME: illinihunt-api
-
 jobs:
-  build-and-push:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Azure Container Registry
-        uses: docker/login-action@v3
+      # Deploy the api/ source as-is (fresh checkout has no node_modules, so
+      # Oryx installs + builds on the Linux host — native deps + the Prisma
+      # debian-openssl-3.0.x engine resolve correctly there).
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
         with:
-          registry: illinihuntdevacr.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./api
-          push: true
-          tags: |
-            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      # App Service's ACR webhook (continuous deployment) picks up the :latest
-      # push and redeploys automatically — nothing further needed here.
-      - name: Note
-        run: echo "Pushed :latest and :${{ github.sha }}. App Service will auto-pull via ACR webhook."
+          app-name: illinihunt
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ./api

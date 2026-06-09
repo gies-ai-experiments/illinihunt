@@ -1,5 +1,9 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // native = local dev (macOS); debian-openssl-3.0.x = Azure App Service
+  // Linux Node runtime (Debian Bookworm + OpenSSL 3). Without the Debian
+  // target, the generated client has no engine for the App Service host.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
