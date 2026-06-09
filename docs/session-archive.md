@@ -2,6 +2,10 @@
 
 Older session log entries. Current session log lives at the top of `CLAUDE.md`.
 
+### 2026-05-28
+- Completed: Sorted out the Azure-migration data handoff to Keshav. Initial plan was to export the Supabase `public` schema (73 users, 34 projects, 99 votes) as encrypted pg_dump files and hand them over — produced schema.sql/data.sql + README + checksums outside the repo. Then decided Keshav already has Supabase project access, so he pulls his own dump directly (cleaner compliance story: authorized member, no file/passphrase changing hands, no standing credential shared). Deleted all local PII copies; repo stayed clean. Saved the pg_dump connection gotcha to auto memory.
+- Next: (optional) lift the non-PII migration playbook (IPv4 session-pooler for pg_dump, `--no-owner --no-privileges`, `SET session_replication_role = replica` for data restore, UUID→Entra-OID re-keying) into the `azure-migration` spec so Keshav doesn't re-derive it. Still blocked on UIUC IT Entra approval + preserve-history-vs-fresh-start decision before Phase 2.
+
 ### 2026-05-27
 - Completed: Designed and specced full Azure migration (UIUC IT compliance — all student data must move to Azure). Approach: Express API on Azure Container Apps + Azure PostgreSQL Flexible Server + Azure Blob Storage + Entra ID (MSAL) auth; frontend stays on Vercel. Spec written to `docs/superpowers/specs/2026-05-26-azure-migration-design.md` on `azure-migration` branch. Repo transferred from `vishalsachdev/illinihunt` → `gies-ai-experiments/illinihunt`; Vercel reconnected; local remote updated. GitHub issue #93 created and assigned to Keshav (keshavdalmia10).
 - Next: Keshav to start Phase 1 (Azure infra setup) once UIUC IT approves Entra app registration. Decide whether to preserve existing user history (re-key Supabase UUIDs → Entra OIDs) before Phase 2 starts.

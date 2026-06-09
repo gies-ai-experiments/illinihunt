@@ -5,10 +5,12 @@
 ## Project Essentials
 
 **IlliniHunt V2** - Product Hunt for University of Illinois
-**Live**: https://illinihunt.org (Cloudflare CDN) | https://illinihunt.vercel.app
+**Live**: https://illinihunt.org (apex → **Azure Static Web Apps**, DNS-only) | `www` still on Vercel — **migration in progress**
 **Repo**: https://github.com/gies-ai-experiments/illinihunt
-**Supabase Project**: `catzwowmxluzwbhdyhnf`
-**Stack**: React 18 + TypeScript + Supabase + Vercel + Cloudflare CDN
+**Legacy Supabase Project**: `catzwowmxluzwbhdyhnf` (deployed app no longer calls it — historical-data migration may still be pending, issue #93)
+**Stack**: React 18 + TypeScript + **Azure App Service API** (`illinihunt.azurewebsites.net/api`) + **Entra ID (MSAL) auth** + **Azure Static Web Apps** frontend (migrating off Vercel) + Cloudflare DNS
+
+> **⚠️ Migration in progress (2026-06-08):** Frontend Vercel → Azure Static Web Apps (`polite-desert-0406a5c10.7.azurestaticapps.net`); backend Supabase → Azure App Service + Entra ID. **Verified from the live bundle (2026-06-08):** deployed app calls `https://illinihunt.azurewebsites.net/api` + Entra (`login.microsoftonline.com/common`); **zero Supabase references remain**. Apex `illinihunt.org` is cut over (Cloudflare DNS-only CNAME → SWA, valid Azure-managed cert). `www.illinihunt.org` is **still on Vercel** — blocked on Azure issuing a cert for it (issue #96). Deep architecture/setup docs below still describe the old Vercel+Supabase stack and are stale until the cutover fully completes — do not trust per-doc Vercel/Supabase references.
 
 ## Quick Setup
 
@@ -47,13 +49,16 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
 - **Auth**: Google OAuth with @illinois.edu restriction + secure RLS policies
 - **Database**: PostgreSQL with Row Level Security, database triggers for vote counting
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui
-- **Deployment**: Vercel (auto-deploy on push) → Cloudflare CDN (caching, DDoS protection)
-  - Custom domain: illinihunt.org (Cloudflare proxy enabled)
-  - After deployments, purge Cloudflare cache to clear stale assets
+- **Deployment**: **Azure Static Web Apps** (apex, cut over 2026-06-08) — `www` still Vercel during migration
+  - Apex `illinihunt.org` → Cloudflare **DNS-only** CNAME → `polite-desert-0406a5c10.7.azurestaticapps.net` (Azure-managed TLS; Cloudflare proxy + reverse-proxy worker bypassed)
+  - `www.illinihunt.org` → still Cloudflare-proxied CNAME → Vercel until issue #96 (Azure `www` custom domain + cert) lands
+  - Cloudflare-cache/Vercel troubleshooting below applies only while `www` remains on Vercel
   - See: [Cloudflare + Vercel Issues](#cloudflare--vercel-issues) below
 
 ## Current Focus
-- [ ] Azure migration in progress — spec in `azure-migration` branch, issue #93 assigned to Keshav (keshavdalmia10). Blocked on: UIUC IT Entra app registration approval; decision on preserving existing user history vs fresh start.
+- [ ] **Azure frontend cutover (in progress)** — apex `illinihunt.org` live on Azure Static Web Apps (DNS-only) as of 2026-06-08. **Next**: dev registers `www.illinihunt.org` as SWA custom domain so Azure issues its cert, then flip `www` CNAME → Azure (issue #96). Decide canonical-host redirect (apex↔www) in `staticwebapp.config.json`.
+- [ ] Azure backend migration — spec in `azure-migration` branch, issue #93 (keshavdalmia10). **Deployed app already runs on the Azure App Service API + Entra auth (verified 2026-06-08); no Supabase calls remain.** Remaining: decision on preserving existing user history vs fresh start (Supabase UUID → Entra OID re-key); confirm legacy Supabase project can be decommissioned once data migration is settled.
+- [ ] **Auth verified (2026-06-08, not a regression)**: app registration `illinihunt-api` (`02e095d4-...`) is `signInAudience: AzureADMyOrg` (single-tenant, UIUC `44467e6f-...`); MSAL authority is the tenant GUID (not `/common`); bundle enforces `@illinois.edu` client-side. Equivalent to the old @illinois.edu gate. **Only residual check**: confirm the App Service API enforces `@illinois.edu` *server-side* too (single-tenant allows B2B guests whose UPN isn't @illinois.edu — client gate alone wouldn't stop a direct API call). Needs backend repo review.
 - [ ] Complete remaining Supabase Security Advisor items: dashboard toggles (HIBP password check, OTP expiry <1h), Postgres patch upgrade
 - [ ] Secrets rotation (PAT → DB password → JWT → API keys → edge secrets → regen types → verify) — schedule for quiet window since JWT rotation logs out all users
 - [ ] Remove the troubleshooting banner (PR #92) once Sentry funnel data is clean for 48h
@@ -68,9 +73,9 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
 - [ ] See: [Improvement Roadmap](docs/IMPROVEMENT_ROADMAP.md) for full details
 
 ## Session Log
-### 2026-05-28
-- Completed: Sorted out the Azure-migration data handoff to Keshav. Initial plan was to export the Supabase `public` schema (73 users, 34 projects, 99 votes) as encrypted pg_dump files and hand them over — produced schema.sql/data.sql + README + checksums outside the repo. Then decided Keshav already has Supabase project access, so he pulls his own dump directly (cleaner compliance story: authorized member, no file/passphrase changing hands, no standing credential shared). Deleted all local PII copies; repo stayed clean. Saved the pg_dump connection gotcha to auto memory.
-- Next: (optional) lift the non-PII migration playbook (IPv4 session-pooler for pg_dump, `--no-owner --no-privileges`, `SET session_replication_role = replica` for data restore, UUID→Entra-OID re-keying) into the `azure-migration` spec so Keshav doesn't re-derive it. Still blocked on UIUC IT Entra approval + preserve-history-vs-fresh-start decision before Phase 2.
+### 2026-06-08
+- Completed: **Cut the apex `illinihunt.org` over to Azure Static Web Apps.** Added Azure apex-ownership TXT (`@` → `_nphcu17nuf41s6nsvzjxfbsjdr95huk`) via CF API; verified Azure already serves a valid `CN=illinihunt.org` cert. Pre-flight cert check caught that **`www` (the canonical host) has NO Azure cert yet** — Azure serves a generic `*.azurewebsites.net` cert for it — so flipping `www` would have broken the site. Flipped apex only: deleted Vercel A record, created DNS-only CNAME `@` → `polite-desert-0406a5c10.7.azurestaticapps.net` (CF flattening; proxy + reverse-proxy worker bypassed since worker routes don't run on grey-cloud traffic). Verified live: 200 + valid TLS. Filed issue #96 for the dev to register `www` as an SWA custom domain. Updated CLAUDE.md + `~/.claude/references/cloudflare-illinihunt.md` to reflect the in-progress migration. Behavior change: apex now serves the Azure app directly, no longer 307→www.
+- Next: (1) dev registers `www` in Azure → add its validation record → flip `www` CNAME → Azure (issue #96); (2) decide canonical-host redirect in `staticwebapp.config.json`; (3) confirm whether the deployed SWA still calls Supabase `catzwowmxluzwbhdyhnf` (backend cutover is separate); (4) once settled, sweep deep docs (README, MENTAL_MODEL, setup/*) off Vercel+Supabase language.
 
 *Older entries archived to `docs/session-archive.md`.*
 
