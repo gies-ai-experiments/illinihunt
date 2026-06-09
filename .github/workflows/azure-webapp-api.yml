@@ -1,13 +1,10 @@
-name: Deploy API to Azure Web App
+name: Build and deploy Node.js API to Azure Web App - illinihunt
 
-# Container-based deploy (current production method). GitHub builds the
-# Express API image, pushes to Azure Container Registry; App Service
-# `illinihunt` runs that image. An ACR webhook (illinihuntapicd) triggers the
-# pull on :latest push.
-#
-# NOTE: a code-based (Oryx/Node) deploy was attempted and works at runtime,
-# but azure/webapps-deploy proved flaky (OneDeploy finalize failures). Staying
-# on the container until a zero-downtime code path (deployment slot) is set up.
+# Follows the MindForum pattern: build a fully self-contained package on the
+# runner (dist + production node_modules + prisma), then deploy that prebuilt
+# package via azure/webapps-deploy. App Service does NOT run an Oryx build
+# (SCM_DO_BUILD_DURING_DEPLOYMENT=false) — OneDeploy just lays down files, which
+# is what makes this reliable. App Service starts `node dist/index.js`.
 
 on:
   push:
@@ -17,31 +14,59 @@ on:
       - '.github/workflows/azure-webapp-api.yml'
   workflow_dispatch: {}
 
-env:
-  ACR_LOGIN_SERVER: illinihuntdevacr.azurecr.io
-  IMAGE_NAME: illinihunt-api
-
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./api
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Azure Container Registry
-        uses: docker/login-action@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          registry: illinihuntdevacr.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
 
-      - name: Build and push image
-        uses: docker/build-push-action@v6
+      - name: Install + build (prisma generate + tsc)
+        run: |
+          npm ci
+          npm run build
+
+      - name: Prune to production dependencies (keeps generated Prisma client)
+        run: npm prune --omit=dev
+
+      - name: Assemble self-contained deploy package
+        run: |
+          mkdir -p azure-package
+          cp -R dist azure-package/dist
+          cp -R node_modules azure-package/node_modules
+          cp -R prisma azure-package/prisma
+          cp package.json azure-package/package.json
+          cp package-lock.json azure-package/package-lock.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          context: ./api
-          push: true
-          tags: |
-            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          name: api-app
+          path: api/azure-package
 
-      - name: Note
-        run: echo "Pushed :latest + :${{ github.sha }}. App Service auto-pulls via ACR webhook."
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-app
+          path: azure-package
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: illinihunt
+          slot-name: Production
+          package: azure-package
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
