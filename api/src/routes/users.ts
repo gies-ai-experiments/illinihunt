@@ -7,6 +7,11 @@ import { isAdminEmail } from '../middleware/requireAdmin.js'
 
 const router = Router()
 
+// users.id is a Postgres UUID column. A non-UUID :id (e.g. an unmatched
+// /api/users/me falling through to /:id) makes Prisma throw P2023, so reject
+// early with 404 instead of pushing a malformed value into the query.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // GET /api/users/search?q=... — used by the invitation flow
 router.get('/search', requireAuth, async (req, res) => {
   const q = String(req.query.q ?? '').trim()
@@ -137,6 +142,7 @@ router.put('/me', requireAuth, async (req, res) => {
 // GET /api/users/:id/projects — owned + member-on projects
 router.get('/:id/projects', async (req, res) => {
   const userId = req.params.id!
+  if (!UUID_RE.test(userId)) return res.status(404).json({ error: 'User not found' })
 
   const [owned, memberships] = await Promise.all([
     prisma.projects.findMany({
@@ -172,6 +178,7 @@ router.get('/:id/projects', async (req, res) => {
 
 // GET /api/users/:id — public profile (placed last because /search and /me would match)
 router.get('/:id', async (req, res) => {
+  if (!UUID_RE.test(req.params.id!)) return res.status(404).json({ error: 'User not found' })
   const user = await prisma.users.findUnique({
     where: { id: req.params.id! },
     select: {
