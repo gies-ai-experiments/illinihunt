@@ -1,10 +1,13 @@
-name: Build and deploy IlliniHunt (frontend + API) to Azure Web App
+name: Build and deploy IlliniHunt (frontend + API) to Azure Web App - staging
 
-# Single-web-app deploy (MindForum pattern): one Azure App Service serves BOTH
-# the React SPA and the Express API. The runner builds the frontend (Vite) and
-# the API (tsc + prisma), assembles a self-contained package, and ships it.
-# Express serves /api/* and falls back to the SPA's index.html for everything
-# else. No Static Web App, no container, no server-side Oryx build.
+# Container-free, single-web-app deploy (MindForum pattern). The runner builds
+# a fully self-contained package — frontend SPA + API dist + ALL production
+# node_modules (incl. the generated Prisma client) — and ships it prebuilt.
+# App Service does NO build (SCM_DO_BUILD_DURING_DEPLOYMENT=false); it just runs
+# `node dist/index.js`, which serves /api/* and the SPA from ./public.
+#
+# Currently targets the `staging` slot for verification; swap to Production
+# once confirmed.
 
 on:
   push:
@@ -29,36 +32,48 @@ jobs:
         with:
           node-version: '22.x'
 
-      # ── Frontend (repo root) ────────────────────────────────────────────
       - name: Build frontend
         run: |
           npm ci
           npm run build
         env:
-          # Same-origin now: the SPA and API share a host, so the API base is
-          # a relative path. No CORS needed.
           VITE_API_URL: /api
           VITE_AZURE_TENANT_ID: ${{ vars.VITE_AZURE_TENANT_ID }}
           VITE_AZURE_CLIENT_ID: ${{ vars.VITE_AZURE_CLIENT_ID }}
           VITE_AZURE_API_CLIENT_ID: ${{ vars.VITE_AZURE_API_CLIENT_ID }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
 
-      # ── Assemble package: API *source* + prebuilt frontend ─────────────
-      # App Service Oryx builds the API on the host (npm install + npm run build
-      # → prisma generate + tsc), which is the deploy path proven to work for
-      # this app. The frontend is prebuilt here and shipped as static files in
-      # public/, which Express serves. (Shipping prebuilt node_modules without
-      # Oryx did not boot on the blessed Node image.)
-      - name: Assemble deploy package
+      - name: Build API + production node_modules
+        working-directory: ./api
+        run: |
+          npm ci
+          npm run build
+          npm prune --omit=dev
+          # prune wipes node_modules/.prisma — regenerate it (prisma CLI is a
+          # prod dep so it survived the prune).
+          npx prisma generate
+
+      - name: Assemble self-contained package
         run: |
           mkdir -p azure-package
-          cp -R api/src azure-package/src
+          cp -R api/dist azure-package/dist
+          cp -R api/node_modules azure-package/node_modules
           cp -R api/prisma azure-package/prisma
           cp api/package.json azure-package/package.json
           cp api/package-lock.json azure-package/package-lock.json
-          cp api/tsconfig.json azure-package/tsconfig.json
-          # Frontend build → public/ (Express serves this as the SPA)
           cp -R dist azure-package/public
+
+      - name: Verify package is complete (fail fast if not)
+        run: |
+          set -e
+          test -f azure-package/dist/index.js              || { echo "MISSING dist/index.js"; exit 1; }
+          test -f azure-package/node_modules/dotenv/package.json       || { echo "MISSING dotenv"; exit 1; }
+          test -f azure-package/node_modules/express/package.json      || { echo "MISSING express"; exit 1; }
+          test -d azure-package/node_modules/.prisma/client            || { echo "MISSING .prisma/client"; exit 1; }
+          test -f azure-package/node_modules/@prisma/client/package.json || { echo "MISSING @prisma/client"; exit 1; }
+          test -f azure-package/public/index.html          || { echo "MISSING public/index.html"; exit 1; }
+          ls azure-package/node_modules/.prisma/client/ | grep -q 'libquery_engine-debian' || { echo "MISSING debian prisma engine"; exit 1; }
+          echo "Package complete ✓"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
