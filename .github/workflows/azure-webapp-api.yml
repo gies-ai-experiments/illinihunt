@@ -49,7 +49,12 @@ jobs:
         run: |
           npm ci
           npm run build
+          # Prune dev deps FIRST — this wipes the generated node_modules/.prisma
+          # client — then regenerate it into the pruned tree so the deployed
+          # package actually contains the Prisma client (prisma CLI is a prod
+          # dep now, so it survives the prune).
           npm prune --omit=dev
+          npx prisma generate
 
       # ── Assemble one self-contained package ─────────────────────────────
       - name: Assemble deploy package
@@ -79,10 +84,10 @@ jobs:
           name: illinihunt-app
           path: azure-package
 
-      - name: Deploy to Azure Web App
+      - name: Deploy to Azure Web App (staging slot)
         uses: azure/webapps-deploy@v3
         with:
           app-name: illinihunt
-          slot-name: Production
+          slot-name: staging
           package: azure-package
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_STAGING }}
