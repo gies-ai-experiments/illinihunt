@@ -1,12 +1,13 @@
 name: Deploy API to Azure Web App
 
-# Code-based (non-container) deploy of the Express API to Azure App Service
-# `illinihunt`. Ships the api/ source; App Service's Oryx build runs
-# `npm ci` + `npm run build` (prisma generate + tsc) on its Linux/Node 22
-# runtime, then starts `node dist/index.js`. No container / ACR involved.
+# Container-based deploy (current production method). GitHub builds the
+# Express API image, pushes to Azure Container Registry; App Service
+# `illinihunt` runs that image. An ACR webhook (illinihuntapicd) triggers the
+# pull on :latest push.
 #
-# (SCM_DO_BUILD_DURING_DEPLOYMENT=true + ENABLE_ORYX_BUILD=true are set as
-# app settings on the web app, which is what triggers the server-side build.)
+# NOTE: a code-based (Oryx/Node) deploy was attempted and works at runtime,
+# but azure/webapps-deploy proved flaky (OneDeploy finalize failures). Staying
+# on the container until a zero-downtime code path (deployment slot) is set up.
 
 on:
   push:
@@ -16,18 +17,31 @@ on:
       - '.github/workflows/azure-webapp-api.yml'
   workflow_dispatch: {}
 
+env:
+  ACR_LOGIN_SERVER: illinihuntdevacr.azurecr.io
+  IMAGE_NAME: illinihunt-api
+
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Deploy the api/ source as-is (fresh checkout has no node_modules, so
-      # Oryx installs + builds on the Linux host — native deps + the Prisma
-      # debian-openssl-3.0.x engine resolve correctly there).
-      - name: Deploy to App Service
-        uses: azure/webapps-deploy@v3
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
         with:
-          app-name: illinihunt
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: ./api
+          registry: illinihuntdevacr.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Note
+        run: echo "Pushed :latest + :${{ github.sha }}. App Service auto-pulls via ACR webhook."
