@@ -21,7 +21,7 @@
 | Container Apps — **idle (scaled to zero)** | **$0** | **$0** |
 | Container Apps — free grant / month (per subscription) | 180,000 vCPU-s + 360,000 GiB-s + 2M requests | free |
 | Container Registry (Basic) | $0.1666 / day | ~$5 / month |
-| PostgreSQL Flexible Server (B2s, shared) | *(burstable B2s)* | ~$35–60 / month *(estimate; shared, identical in both models)* |
+| PostgreSQL Flexible Server **B2s** (shared) | $0.068 / hour compute + $0.115 / GB-mo storage | **~$65 / month** ($50 compute + ~$15 for 128 GB) |
 
 ---
 
@@ -40,9 +40,9 @@ registry). Idle apps then cost **≈ $0**, and cost scales with *actual usage* r
 
 | App count | Current model (App Service Plan) | Proposed (Container Apps) | Est. monthly saving |
 |---|---|---|---|
-| 5 (today) | ~$218/mo | ~$65/mo | **~$150/mo** |
-| 15 | ~$380/mo | ~$90/mo | **~$290/mo** |
-| 25 | ~$545/mo | ~$115/mo | **~$430/mo** |
+| 5 (today) | ~$238/mo | ~$85/mo | **~$150/mo** |
+| 15 | ~$400/mo | ~$110/mo | **~$290/mo** |
+| 25 | ~$565/mo | ~$135/mo | **~$430/mo** |
 
 At 15 apps that's roughly **~$3,500/year** avoided, and the gap widens as more dormant apps
 are added.
@@ -104,12 +104,12 @@ demand. Idle = $0. You pay per **vCPU-second + memory-second + request**, with a
 These services are **identical in both models** (shared, unchanged) — they are not where the
 difference comes from:
 
-| Shared service | Est. monthly | Notes |
+| Shared service | Monthly | Notes |
 |---|---|---|
-| PostgreSQL Flexible Server (B2s, shared) | ~$45 | one server, one DB per app |
-| Container Registry (Basic) | ~$5 | one registry, all images |
-| Log Analytics | ~$5 | low ingest at this scale |
-| **Shared subtotal** | **~$55** | same for both models |
+| PostgreSQL Flexible Server (B2s, shared) | ~$65 | verified: $0.068/hr + 128 GB storage; one DB per app |
+| Container Registry (Basic) | ~$5 | verified; one registry, all images |
+| Log Analytics | ~$5 | usage-based; low ingest at this scale |
+| **Shared subtotal** | **~$75** | same for both models (cancels out of the saving) |
 
 The difference is entirely **compute**:
 
@@ -141,23 +141,23 @@ less.)*
 
 ### Totals (shared + compute)
 
-| App count | App Service Plan (compute + ~$55 shared) | Container Apps (compute + ~$55 shared) | Saving |
+| App count | App Service Plan (compute + ~$75 shared) | Container Apps (compute + ~$75 shared) | Saving |
 |---|---|---|---|
-| 5 | **~$218** | **~$65** | ~$150/mo |
-| 15 | **~$380** | **~$90** | ~$290/mo |
-| 25 | **~$545** | **~$115** | ~$430/mo |
+| 5 | **~$238** | **~$85** | ~$150/mo |
+| 15 | **~$400** | **~$110** | ~$290/mo |
+| 25 | **~$565** | **~$135** | ~$430/mo |
 
 ```
 Monthly cost vs. number of apps
 
-$545 ┤                                            ● App Service ($545)
+$565 ┤                                            ● App Service ($565)
 $500 ┤
-$400 ┤                  ● App Service ($380)
+$400 ┤                  ● App Service ($400)
 $300 ┤
-$218 ┤  ● App Service
+$238 ┤  ● App Service
 $200 ┤
-$115 ┤                                            ▲ Container Apps ($115)
-$100 ┤  ▲ ($65)         ▲ ($90)
+$135 ┤                                            ▲ Container Apps ($135)
+$100 ┤  ▲ ($85)         ▲ ($110)
    0 ┼───────┬──────────────┬──────────────────────┬────────
         5 apps          15 apps                 25 apps
 
