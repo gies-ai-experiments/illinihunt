@@ -4,10 +4,24 @@
 **Date:** 2026-06-09
 **Subscription:** `urbana-business-disruptionlab` · Region: `northcentralus`
 
-> All dollar figures are **estimates** for planning. Exact prices vary by region and
-> change over time — confirm in the [Azure Pricing Calculator](https://azure.microsoft.com/pricing/calculator/)
-> before budgeting. The **relative comparison** (which model is cheaper as the app count
-> grows) is the robust conclusion and does not depend on the exact rates.
+> **Unit rates below are verified** against the Azure Retail Prices API on 2026-06-09
+> (`northcentralus`, pay-as-you-go, USD). **Totals are estimates** because they depend on how
+> much traffic each app actually serves — the usage assumptions are stated explicitly. The
+> **relative comparison** (which model is cheaper as the app count grows) is the robust
+> conclusion.
+
+### Verified unit rates (Azure Retail Prices API, northcentralus, PAYG)
+
+| Resource | Rate | → Monthly |
+|---|---|---|
+| App Service **P1mv4** (Linux) | **$0.223 / hour** | **~$163 / instance** (×730 h) |
+| Container Apps — vCPU (active) | $0.000024 / vCPU-second | usage-based |
+| Container Apps — memory (active) | $0.000003 / GiB-second | usage-based |
+| Container Apps — requests | $0.40 / million | usage-based |
+| Container Apps — **idle (scaled to zero)** | **$0** | **$0** |
+| Container Apps — free grant / month (per subscription) | 180,000 vCPU-s + 360,000 GiB-s + 2M requests | free |
+| Container Registry (Basic) | $0.1666 / day | ~$5 / month |
+| PostgreSQL Flexible Server (B2s, shared) | *(burstable B2s)* | ~$35–60 / month *(estimate; shared, identical in both models)* |
 
 ---
 
@@ -26,11 +40,11 @@ registry). Idle apps then cost **≈ $0**, and cost scales with *actual usage* r
 
 | App count | Current model (App Service Plan) | Proposed (Container Apps) | Est. monthly saving |
 |---|---|---|---|
-| 5 (today) | ~$235/mo | ~$65/mo | **~$170/mo** |
-| 15 | ~$415/mo | ~$85/mo | **~$330/mo** |
-| 25 | ~$595/mo | ~$115/mo | **~$480/mo** |
+| 5 (today) | ~$218/mo | ~$65/mo | **~$150/mo** |
+| 15 | ~$380/mo | ~$90/mo | **~$290/mo** |
+| 25 | ~$545/mo | ~$115/mo | **~$430/mo** |
 
-At 15 apps that's roughly **~$4,000/year** avoided, and the gap widens as more dormant apps
+At 15 apps that's roughly **~$3,500/year** avoided, and the gap widens as more dormant apps
 are added.
 
 ---
@@ -100,24 +114,26 @@ difference comes from:
 The difference is entirely **compute**:
 
 ### Compute — App Service Plan (current)
-Fixed, always-on. One P1mv4 instance ≈ **~$180/mo**. As apps grow past one instance's
-capacity you scale up/out in fixed steps:
+Fixed, always-on. One P1mv4 (Linux) instance = **$0.223/hr ≈ $163/mo** (verified). As apps
+grow past one instance's capacity you scale up/out in fixed steps:
 
 | App count | Plan capacity needed | Est. compute |
 |---|---|---|
-| 5 | 1× P1mv4 | ~$180 |
-| 15 | ~2× (scale out) | ~$360 |
-| 25 | ~3× | ~$540 |
+| 5 | 1× P1mv4 | ~$163 |
+| 15 | ~2× (scale out) | ~$326 |
+| 25 | ~3× | ~$489 |
 
 ### Compute — Container Apps consumption (proposed)
 Usage-based, scale-to-zero, with a **per-subscription monthly free grant**
 (~180,000 vCPU-sec + ~360,000 GiB-sec + ~2,000,000 requests free). For dormant /
-low-traffic apps, aggregate usage stays near the grant:
+low-traffic apps, aggregate usage stays near the grant. *(Worked example: 15 apps × 0.5 vCPU
++ 1 GiB, each active ~2 hrs/day ≈ $35/mo after the free grant. Truly idle apps cost far
+less.)*
 
 | App count (mostly dormant) | Est. compute |
 |---|---|
 | 5 | ~$10 |
-| 15 | ~$30 |
+| 15 | ~$35 |
 | 25 | ~$60 |
 
 > Apps that receive *sustained* traffic cost more (they run continuously) — but then they're
@@ -125,23 +141,23 @@ low-traffic apps, aggregate usage stays near the grant:
 
 ### Totals (shared + compute)
 
-| App count | App Service Plan | Container Apps | Saving |
+| App count | App Service Plan (compute + ~$55 shared) | Container Apps (compute + ~$55 shared) | Saving |
 |---|---|---|---|
-| 5 | **~$235** | **~$65** | ~$170/mo |
-| 15 | **~$415** | **~$85** | ~$330/mo |
-| 25 | **~$595** | **~$115** | ~$480/mo |
+| 5 | **~$218** | **~$65** | ~$150/mo |
+| 15 | **~$380** | **~$90** | ~$290/mo |
+| 25 | **~$545** | **~$115** | ~$430/mo |
 
 ```
-Monthly cost vs. number of apps (estimated)
+Monthly cost vs. number of apps
 
-$600 ┤                                            ● App Service ($595)
+$545 ┤                                            ● App Service ($545)
 $500 ┤
-$400 ┤                  ● App Service ($415)
+$400 ┤                  ● App Service ($380)
 $300 ┤
-$235 ┤  ● App Service
+$218 ┤  ● App Service
 $200 ┤
 $115 ┤                                            ▲ Container Apps ($115)
-$100 ┤  ▲ ($65)         ▲ ($85)
+$100 ┤  ▲ ($65)         ▲ ($90)
    0 ┼───────┬──────────────┬──────────────────────┬────────
         5 apps          15 apps                 25 apps
 
@@ -190,7 +206,7 @@ scale-to-zero wins decisively.
 4. **Onboard all future apps** via the standard runbook (see
    [`LAB_DEPLOYMENT_STANDARD.md`](./LAB_DEPLOYMENT_STANDARD.md)).
 
-**Net:** estimated **~$330/mo (~$4k/yr) saved at 15 apps**, a standardized one-pipeline
+**Net:** estimated **~$290/mo (~$3.5k/yr) saved at 15 apps**, a standardized one-pipeline
 deploy process, and a platform where each new dormant app adds ≈ $0.
 
 ---
