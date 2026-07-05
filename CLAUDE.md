@@ -18,11 +18,6 @@
 # Clone & Install
 git clone <repo> && cd illinihunt && npm install
 
-# Environment (.env.local)
-VITE_SUPABASE_URL=https://catzwowmxluzwbhdyhnf.supabase.co
-VITE_SUPABASE_ANON_KEY=<get_from_supabase_dashboard>
-SUPABASE_ACCESS_TOKEN=<get_from_supabase_settings>
-
 # Verify & Run
 npm run type-check && npm run build && npm run dev
 ```
@@ -49,11 +44,9 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
 - **Auth**: Google OAuth with @illinois.edu restriction + secure RLS policies
 - **Database**: PostgreSQL with Row Level Security, database triggers for vote counting
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui
-- **Deployment**: **Azure Static Web Apps** (apex, cut over 2026-06-08) — `www` still Vercel during migration
-  - Apex `illinihunt.org` → Cloudflare **DNS-only** CNAME → `polite-desert-0406a5c10.7.azurestaticapps.net` (Azure-managed TLS; Cloudflare proxy + reverse-proxy worker bypassed)
-  - `www.illinihunt.org` → still Cloudflare-proxied CNAME → Vercel until issue #96 (Azure `www` custom domain + cert) lands
-  - Cloudflare-cache/Vercel troubleshooting below applies only while `www` remains on Vercel
-  - See: [Cloudflare + Vercel Issues](#cloudflare--vercel-issues) below
+- **Deployment**: **Azure Static Web Apps** — apex + `www` both cut over 2026-06-09 (issue #96 closed); fully off Vercel
+  - Apex `illinihunt.org` and `www.illinihunt.org` → Cloudflare **DNS-only** CNAMEs → `polite-desert-0406a5c10.7.azurestaticapps.net` (Azure-managed TLS; Cloudflare proxy + reverse-proxy worker bypassed)
+  - [Cloudflare + Vercel Issues](#cloudflare--vercel-issues) below is historical (pre-migration) — kept for reference only
 
 ## Current Focus
 - [x] **Azure frontend cutover COMPLETE (2026-06-09)** — apex + `www` both serve from Azure Static Web Apps (`illinihunt-dev`, RG `DL_ResourceGroup_01`, DNS-only CNAMEs), fully off Vercel. Backend on Azure App Service API (`illinihunt.azurewebsites.net`) + Entra auth; no Supabase calls remain. Auth confirmed single-tenant UIUC + `@illinois.edu` (not a regression).
