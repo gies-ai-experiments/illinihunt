@@ -63,6 +63,18 @@ footer a{color:#94A3B8}
 <ul><li><a href="/">IlliniHunt home</a> — browse every project</li><li><a href="/trending">Trending</a> — what is getting attention now</li><li><a href="/about">About</a> — what this site is</li><li><a href="/developers">Developer documentation</a> — the public REST API</li><li><a href="/llms.txt">llms.txt</a> — machine-readable site guide</li><li><a href="/openapi.json">openapi.json</a> — OpenAPI description of the API</li><li><a href="/sitemap.xml">sitemap.xml</a> — every crawlable page</li></ul>
 <h2>If you are an agent</h2>
 <p>Project pages live at <code>/project/{id}</code> and profiles at <code>/user/{id}</code>, where <code>{id}</code> is a UUID. Rather than guessing paths, list what exists: <code>GET https://illinihunt.azurewebsites.net/api/projects</code>.</p>
+<p>The same recovery routes as markdown, ready to lift:</p>
+<pre><code># 404 — not found on IlliniHunt
+
+- [Home](https://illinihunt.org/)
+- [Trending](https://illinihunt.org/trending)
+- [About](https://illinihunt.org/about)
+- [Developer documentation](https://illinihunt.org/developers)
+- [llms.txt](https://illinihunt.org/llms.txt)
+- [openapi.json](https://illinihunt.org/openapi.json)
+- [Sitemap](https://illinihunt.org/sitemap.xml)
+
+API base URL: https://illinihunt.azurewebsites.net</code></pre>
 </main>
 <footer>
 IlliniHunt · Disruption Lab, Gies College of Business, University of Illinois Urbana-Champaign ·

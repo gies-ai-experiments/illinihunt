@@ -242,6 +242,12 @@ Errors are always JSON, never HTML. The shape is:
 - `upvotes_count` is denormalized and updated by a database trigger, so it is consistent with `GET /api/votes/batch`.
 - Timestamps are ISO 8601 UTC.
 
+## Versioning and deprecation
+
+This is version 1 of the API, served from unversioned `/api/` paths. Additive changes — new endpoints, new optional parameters, new fields on a response — ship within v1 without notice, so parse defensively and ignore fields you do not recognise.
+
+Anything that removes or renames a field, narrows a type, or changes the meaning of an existing value is a breaking change, and ships under an explicit `/api/v2/` prefix rather than in place. When that happens the current paths keep serving for at least 180 days, the affected operations are marked `deprecated: true` in [openapi.json](/openapi.json), and responses carry `Deprecation` and `Sunset` headers (RFC 9745 and RFC 8594). Deprecations are announced in the repository's releases at [{repo}/releases]({repo}/releases).
+
 ## Source and support
 
 The API is Express with Prisma against PostgreSQL; the whole thing is open source at [{repo}]({repo}). Report API problems at [{repo}/issues]({repo}/issues).
@@ -268,6 +274,22 @@ There is no page at this address. This is a real HTTP 404, so an automated clien
 ## If you are an agent
 
 Project pages live at `/project/{{id}}` and profiles at `/user/{{id}}`, where `{{id}}` is a UUID. Rather than guessing paths, list what exists: `GET https://illinihunt.azurewebsites.net/api/projects`.
+
+The same recovery routes as markdown, ready to lift:
+
+```
+# 404 — not found on IlliniHunt
+
+- [Home]({site}/)
+- [Trending]({site}/trending)
+- [About]({site}/about)
+- [Developer documentation]({site}/developers)
+- [llms.txt]({site}/llms.txt)
+- [openapi.json]({site}/openapi.json)
+- [Sitemap]({site}/sitemap.xml)
+
+API base URL: {api}
+```
 """,
 }
 

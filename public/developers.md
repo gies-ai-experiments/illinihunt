@@ -86,6 +86,12 @@ Errors are always JSON, never HTML. The shape is:
 - `upvotes_count` is denormalized and updated by a database trigger, so it is consistent with `GET /api/votes/batch`.
 - Timestamps are ISO 8601 UTC.
 
+## Versioning and deprecation
+
+This is version 1 of the API, served from unversioned `/api/` paths. Additive changes — new endpoints, new optional parameters, new fields on a response — ship within v1 without notice, so parse defensively and ignore fields you do not recognise.
+
+Anything that removes or renames a field, narrows a type, or changes the meaning of an existing value is a breaking change, and ships under an explicit `/api/v2/` prefix rather than in place. When that happens the current paths keep serving for at least 180 days, the affected operations are marked `deprecated: true` in [openapi.json](/openapi.json), and responses carry `Deprecation` and `Sunset` headers (RFC 9745 and RFC 8594). Deprecations are announced in the repository's releases at [https://github.com/gies-ai-experiments/illinihunt/releases](https://github.com/gies-ai-experiments/illinihunt/releases).
+
 ## Source and support
 
 The API is Express with Prisma against PostgreSQL; the whole thing is open source at [https://github.com/gies-ai-experiments/illinihunt](https://github.com/gies-ai-experiments/illinihunt). Report API problems at [https://github.com/gies-ai-experiments/illinihunt/issues](https://github.com/gies-ai-experiments/illinihunt/issues).

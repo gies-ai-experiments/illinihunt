@@ -4,7 +4,7 @@
     "title": "IlliniHunt API",
     "version": "1.0.0",
     "summary": "Read and write the IlliniHunt catalog of University of Illinois Urbana-Champaign student, faculty, and staff projects.",
-    "description": "IlliniHunt is a Product Hunt style launch board for the University of Illinois Urbana-Champaign community. This API exposes the public project catalog, categories, trending rankings, site statistics, and public user profiles without authentication, plus authenticated endpoints for submitting projects, voting, commenting, bookmarking, and managing collections.\n\nAll responses are JSON. Errors return a JSON object with an `error` field and, for unmatched paths, the requested `path`. The API is rate limited to 300 requests per minute per client (see the `RateLimit` response headers, RFC 9331 draft-7 format).\n\nAuthenticated endpoints require a Microsoft Entra ID bearer token issued for the University of Illinois tenant. Sign-in is restricted to @illinois.edu accounts; there is no public self-service API key programme.",
+    "description": "IlliniHunt is a Product Hunt style launch board for the University of Illinois Urbana-Champaign community. This API exposes the public project catalog, categories, trending rankings, site statistics, and public user profiles without authentication, plus authenticated endpoints for submitting projects, voting, commenting, bookmarking, and managing collections.\n\nAll responses are JSON. Errors return a JSON object with an `error` field and, for unmatched paths, the requested `path`. The API is rate limited to 300 requests per minute per client (see the `RateLimit` response headers, RFC 9331 draft-7 format).\n\nAuthenticated endpoints require a Microsoft Entra ID bearer token issued for the University of Illinois tenant. Sign-in is restricted to @illinois.edu accounts; there is no public self-service API key programme.\n\n## Versioning and deprecation\n\nThis is version 1 of the API, served from unversioned `/api/` paths. The `info.version` field above is the authoritative version number.\n\nAdditive changes \u2014 new endpoints, new optional parameters, new fields on a response \u2014 ship within v1 without notice, so parse defensively and ignore fields you do not recognise. Anything that removes or renames a field, narrows a type, or changes the meaning of an existing value is a breaking change, and ships under an explicit `/api/v2/` prefix rather than in place. When that happens the current paths keep serving for at least 180 days, the affected operations are marked `deprecated: true` here, and responses carry `Deprecation` and `Sunset` headers (RFC 9745 and RFC 8594). Deprecations are announced at https://github.com/gies-ai-experiments/illinihunt/releases.",
     "contact": {
       "name": "IlliniHunt maintainers",
       "url": "https://github.com/gies-ai-experiments/illinihunt/issues"
@@ -88,6 +88,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -173,6 +179,9 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -212,6 +221,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -251,6 +266,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -293,6 +314,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -327,6 +354,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -374,6 +407,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -419,6 +458,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -450,6 +495,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -489,6 +540,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -528,6 +585,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -580,6 +643,12 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
           }
         }
       }
@@ -639,6 +708,16 @@
       },
       "RateLimited": {
         "description": "More than 300 requests in the last minute. Retry after the window resets; see the RateLimit response headers.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Unexpected server fault. The body is JSON; the detail goes to the maintainers' error tracker rather than to the caller.",
         "content": {
           "application/json": {
             "schema": {
