@@ -1,0 +1,28 @@
+{
+  "name": "IlliniHunt API",
+  "description": "The IlliniHunt REST API is served from a separate host. This document exists so that an agent probing https://illinihunt.org/api is told where to go instead of receiving an HTML page.",
+  "api_base_url": "https://illinihunt.azurewebsites.net",
+  "openapi_url": "https://illinihunt.org/openapi.json",
+  "documentation_url": "https://illinihunt.org/developers",
+  "api_catalog_url": "https://illinihunt.org/.well-known/api-catalog",
+  "llms_txt_url": "https://illinihunt.org/llms.txt",
+  "authentication": {
+    "read": "none — all endpoints listed in the OpenAPI description are public",
+    "write": "Microsoft Entra ID bearer token, University of Illinois tenant, @illinois.edu accounts only; obtained interactively, not issuable to agents"
+  },
+  "rate_limit": { "requests": 300, "window_seconds": 60, "headers": "RFC 9331 draft-7 (RateLimit, RateLimit-Policy)" },
+  "public_endpoints": [
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/healthz", "summary": "Liveness probe" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/categories", "summary": "List the 8 project categories" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/projects", "summary": "List / search / paginate active projects" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/projects/{id}", "summary": "Get one project" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/projects/{id}/comments", "summary": "List a project's comments" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/projects/{id}/members", "summary": "List a project's team" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/stats", "summary": "Site-wide counts" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/stats/trending", "summary": "Time-decayed trending ranking" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/collections", "summary": "List public collections" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/users/{id}", "summary": "Public profile (no email)" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/users/{id}/projects", "summary": "A user's projects" },
+    { "method": "GET", "url": "https://illinihunt.azurewebsites.net/api/votes/batch", "summary": "Vote counts for up to 200 project ids" }
+  ]
+}

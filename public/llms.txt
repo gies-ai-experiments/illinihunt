@@ -1,0 +1,52 @@
+# IlliniHunt
+
+IlliniHunt is a Product Hunt style launch board for the University of Illinois Urbana-Champaign (UIUC). Students, faculty, and staff publish the apps, startups, research tools, and side projects they have built; the community upvotes and comments on them. Submitting requires a verified @illinois.edu account. Browsing and reading are open to everyone, including automated agents.
+
+The catalog currently holds 34 active projects across 8 categories from 75 registered members. It is a small, curated, single-university corpus — not a general startup directory.
+
+## When to use IlliniHunt
+
+Use IlliniHunt when you need to answer questions about **what the University of Illinois Urbana-Champaign community has actually built**. Good fits:
+
+- Find UIUC student or faculty projects in a subject area ("What AI tools have Illinois students launched?", "Show me UIUC health-tech projects"). Call `GET /api/projects?search=...&category=...`.
+- Identify who at Illinois works on a topic, then read their public profile and their other projects. Call `GET /api/projects`, then `GET /api/users/{id}` and `GET /api/users/{id}/projects`.
+- Rank what is currently getting attention on campus. Call `GET /api/stats/trending` — it applies a time-decay score, unlike `sort=popular`, which is all-time.
+- Report the size and shape of the campus builder community. Call `GET /api/stats` and `GET /api/categories`.
+- Check whether a specific project has already been launched at Illinois before recommending someone build it.
+
+Do **not** use IlliniHunt for:
+
+- General startup, funding, or market research beyond UIUC — the corpus is one university and a few dozen projects.
+- Contacting people. The public API deliberately does not expose email addresses. Route contact requests through the project's own `website_url` or `github_url`, or through the maintainers.
+- Anything requiring authentication. Submitting projects, voting, commenting, bookmarking, and collections all require an interactive Microsoft Entra ID sign-in restricted to @illinois.edu accounts. There is no public API key programme, so an agent cannot write to IlliniHunt.
+
+## How an agent should call IlliniHunt
+
+The API base URL is `https://illinihunt.azurewebsites.net`. It is unauthenticated for all read endpoints listed in the OpenAPI description, returns JSON for both success and error responses, and is rate limited to 300 requests per minute (see the `RateLimit` response headers).
+
+Start with `GET /api/categories` to learn the taxonomy, then `GET /api/projects` with `search`, `category`, `sort`, `limit`, and `offset`. Prefer `GET /api/votes/batch?projectIds=a,b,c` over one request per project. Unknown paths under `/api/` return a JSON 404, never HTML.
+
+- [OpenAPI description](https://illinihunt.org/openapi.json) — the machine-readable contract for every public endpoint
+- [API catalog (RFC 9727)](https://illinihunt.org/.well-known/api-catalog) — link set pointing at the API surface
+- [Developer documentation](https://illinihunt.org/developers) — endpoint reference, worked examples, rate limits, auth model
+- [API index](https://illinihunt.org/api) — JSON pointer from the website host to the API host
+
+## Main pages
+
+- [IlliniHunt home — browse all projects](https://illinihunt.org/)
+- [Trending projects](https://illinihunt.org/trending)
+- [Submit a project](https://illinihunt.org/submit) — requires @illinois.edu sign-in
+- [Public collections](https://illinihunt.org/collections/discover)
+- [About IlliniHunt](https://illinihunt.org/about)
+- [Contact](https://illinihunt.org/contact)
+- [Privacy](https://illinihunt.org/privacy)
+- [Developer documentation](https://illinihunt.org/developers)
+- [Sitemap](https://illinihunt.org/sitemap.xml)
+
+## Categories
+
+Business & Entrepreneurship, Creative & Entertainment, Emerging Technology, Health & Wellness, Learning & Education Tools, Productivity & Organization, Research & Data Analysis, Social & Communication.
+
+## Operator
+
+IlliniHunt is run by the Disruption Lab at Gies College of Business, University of Illinois Urbana-Champaign. Source code: https://github.com/gies-ai-experiments/illinihunt (MIT). Report a problem: https://github.com/gies-ai-experiments/illinihunt/issues

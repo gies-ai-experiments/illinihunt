@@ -194,7 +194,10 @@ router.get('/:id', async (req, res) => {
       department: true,
       is_verified: true,
       created_at: true,
-      email: true,
+      // NOTE: email is deliberately NOT selected here. This endpoint is
+      // unauthenticated, and user ids are discoverable from GET /api/projects,
+      // so selecting email made every @illinois.edu address on the site
+      // harvestable by an anonymous caller (issue #95).
     },
   })
   if (!user) return res.status(404).json({ error: 'User not found' })

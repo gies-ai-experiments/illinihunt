@@ -6,13 +6,43 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://illinihunt.org/submit</loc>
+    <loc>https://illinihunt.org/trending</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://illinihunt.org/collections/discover</loc>
     <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://illinihunt.org/submit</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://illinihunt.org/developers</loc>
+    <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://illinihunt.org/collections</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
+    <loc>https://illinihunt.org/docs</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://illinihunt.org/about</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://illinihunt.org/contact</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://illinihunt.org/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
   </url>
 </urlset>

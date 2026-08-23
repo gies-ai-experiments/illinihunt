@@ -1,0 +1,20 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://illinihunt.org",
+      "service-desc": [
+        { "href": "https://illinihunt.org/openapi.json", "type": "application/openapi+json", "title": "IlliniHunt OpenAPI description" }
+      ],
+      "service-doc": [
+        { "href": "https://illinihunt.org/developers", "type": "text/html", "title": "IlliniHunt developer documentation" }
+      ],
+      "service-meta": [
+        { "href": "https://illinihunt.org/llms.txt", "type": "text/markdown", "title": "IlliniHunt machine-readable site guide" },
+        { "href": "https://illinihunt.org/api", "type": "application/json", "title": "IlliniHunt API index" }
+      ],
+      "status": [
+        { "href": "https://illinihunt.azurewebsites.net/healthz", "type": "application/json", "title": "Liveness probe" }
+      ]
+    }
+  ]
+}

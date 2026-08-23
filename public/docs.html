@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IlliniHunt Documentation</title>
+<meta name="description" content="Index of IlliniHunt documentation for people and for agents: API reference, OpenAPI description, llms.txt, and site background.">
+<link rel="canonical" href="https://illinihunt.org/docs">
+<link rel="icon" type="image/svg+xml" href="/vite.svg">
+<link rel="alternate" type="text/markdown" href="/docs.md" title="Markdown version">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="IlliniHunt">
+<meta property="og:url" content="https://illinihunt.org/docs">
+<meta property="og:title" content="IlliniHunt Documentation">
+<meta property="og:description" content="Index of IlliniHunt documentation for people and for agents: API reference, OpenAPI description, llms.txt, and site background.">
+<meta property="og:image" content="https://illinihunt.org/homepage.png">
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#050A14;color:#CBD5E1;
+  font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-text-size-adjust:100%}
+.wrap{max-width:44rem;margin:0 auto;padding:1.5rem 1.125rem 4rem}
+header{border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:2rem;padding-bottom:1.25rem}
+.brand{display:inline-flex;align-items:center;gap:.6rem;text-decoration:none;color:#fff}
+.mark{width:2rem;height:2rem;border-radius:.55rem;background:linear-gradient(135deg,#FF6B35,#EA580C);
+  display:grid;place-items:center;font-weight:700;color:#fff;flex:none}
+.brand span{font-size:1.15rem;font-weight:700}
+nav{margin-top:.9rem;display:flex;flex-wrap:wrap;gap:.4rem .95rem;font-size:.875rem}
+nav a{color:#94A3B8;text-decoration:none}
+nav a:hover,nav a:focus{color:#FF6B35;text-decoration:underline}
+h1{color:#fff;font-size:1.7rem;line-height:1.25;margin:0 0 .6rem}
+h2{color:#fff;font-size:1.15rem;margin:2rem 0 .5rem}
+.lede{color:#94A3B8;font-size:1.02rem;margin:0 0 1.75rem}
+a{color:#FF8C5A}
+a:hover,a:focus{color:#FF6B35}
+ul{padding-left:1.15rem}
+li{margin:.3rem 0}
+code{background:rgba(255,255,255,.07);border-radius:.25rem;padding:.1rem .35rem;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.875em;
+  overflow-wrap:anywhere}
+pre{background:#0A1428;border:1px solid rgba(255,255,255,.09);border-radius:.5rem;
+  padding:.9rem 1rem;overflow-x:auto}
+pre code{background:none;padding:0;font-size:.83rem}
+strong{color:#E2E8F0}
+footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid rgba(255,255,255,.1);
+  color:#64748B;font-size:.83rem}
+footer a{color:#94A3B8}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <a class="brand" href="/"><span class="mark">I</span><span>IlliniHunt</span></a>
+  <nav><a href="/">Home</a><a href="/trending">Trending</a><a href="/about">About</a><a href="/developers">Developers</a><a href="/contact">Contact</a><a href="/privacy">Privacy</a></nav>
+</header>
+<main>
+<h1>IlliniHunt Documentation</h1>
+<p class="lede">Index of IlliniHunt documentation for people and for agents: API reference, OpenAPI description, llms.txt, and site background.</p>
+<p>Everything IlliniHunt publishes about itself, in one place. If you are an automated agent, start with <a href="/llms.txt">llms.txt</a> — it states plainly what this site is good for and what it is not.</p>
+<h2>For agents</h2>
+<ul><li><a href="/llms.txt">llms.txt</a> — machine-readable site guide, including a "when to use IlliniHunt" section that names the queries this site can and cannot answer.</li><li><a href="/openapi.json">openapi.json</a> — OpenAPI 3.1 description of every public endpoint, with typed parameters, response schemas, and a unique operation id per operation.</li><li><a href="/.well-known/api-catalog">.well-known/api-catalog</a> — RFC 9727 link set pointing at the API description, the documentation, and the liveness probe.</li><li><a href="/api">/api</a> — a JSON index served from the website host, telling you that the API lives on a different host and where.</li><li><a href="/sitemap.xml">sitemap.xml</a> — every crawlable page.</li></ul>
+<h2>For developers</h2>
+<ul><li><a href="/developers">Developer documentation</a> — endpoint reference, worked <code>curl</code> examples, pagination, rate limits, error format, and the authentication model.</li><li><a href="https://github.com/gies-ai-experiments/illinihunt">Source code</a> — the whole application, MIT-licensed.</li><li><a href="https://github.com/gies-ai-experiments/illinihunt/issues">Issue tracker</a> — bugs, feature requests, and questions.</li></ul>
+<h2>About the site</h2>
+<ul><li><a href="/about">About IlliniHunt</a> — what the site is, who can post, how ranking works, who runs it.</li><li><a href="/contact">Contact</a> — how to reach the maintainers, report content, or request removal.</li><li><a href="/privacy">Privacy</a> — what is stored, what is public, and what is never exposed through the API.</li></ul>
+</main>
+<footer>
+IlliniHunt · Disruption Lab, Gies College of Business, University of Illinois Urbana-Champaign ·
+<a href="https://github.com/gies-ai-experiments/illinihunt">Source</a> · <a href="/llms.txt">llms.txt</a> · <a href="/openapi.json">openapi.json</a>
+</footer>
+</div>
+</body>
+</html>

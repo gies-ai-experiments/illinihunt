@@ -6,37 +6,136 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no" />
     <link rel="canonical" href="https://illinihunt.org/" />
     <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+    <link rel="help" href="/developers" />
     <link rel="preconnect" href="https://illinihunt.azurewebsites.net" crossorigin />
-    <link rel="preconnect" href="https://illinihuntdevsa.blob.core.windows.net" crossorigin />
-    <title>IlliniHunt - Discover UIUC Innovation</title>
-    <meta name="description" content="Discover amazing projects, apps, and startups from the University of Illinois community. Students, faculty, and staff showcase their innovation at UIUC." />
-    
+    <title>IlliniHunt — Discover UIUC Innovation</title>
+    <meta name="description" content="Discover projects, apps, and startups built by the University of Illinois Urbana-Champaign community. Students, faculty, and staff showcase their innovation at UIUC. Public read API for agents." />
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="IlliniHunt" />
     <meta property="og:url" content="https://illinihunt.org/" />
-    <meta property="og:title" content="IlliniHunt - Discover UIUC Innovation" />
-    <meta property="og:description" content="Discover amazing projects, apps, and startups from the University of Illinois community. Students, faculty, and staff showcase their innovation at UIUC." />
+    <meta property="og:title" content="IlliniHunt — Discover UIUC Innovation" />
+    <meta property="og:description" content="Discover projects, apps, and startups built by the University of Illinois Urbana-Champaign community." />
     <meta property="og:image" content="https://illinihunt.org/homepage.png" />
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content="https://illinihunt.org/" />
-    <meta property="twitter:title" content="IlliniHunt - Discover UIUC Innovation" />
-    <meta property="twitter:description" content="Discover amazing projects, apps, and startups from the University of Illinois community. Students, faculty, and staff showcase their innovation at UIUC." />
+    <meta property="twitter:title" content="IlliniHunt — Discover UIUC Innovation" />
+    <meta property="twitter:description" content="Discover projects, apps, and startups built by the University of Illinois Urbana-Champaign community." />
     <meta property="twitter:image" content="https://illinihunt.org/homepage.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://illinihunt.org/#website",
+          "url": "https://illinihunt.org/",
+          "name": "IlliniHunt",
+          "description": "A launch board for projects, apps, and startups built by the University of Illinois Urbana-Champaign community.",
+          "inLanguage": "en-US",
+          "publisher": { "@id": "https://illinihunt.org/#organization" },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": { "@type": "EntryPoint", "urlTemplate": "https://illinihunt.azurewebsites.net/api/projects?search={search_term_string}" },
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://illinihunt.org/#application",
+          "name": "IlliniHunt",
+          "url": "https://illinihunt.org/",
+          "applicationCategory": "BusinessApplication",
+          "applicationSubCategory": "Project discovery and community voting",
+          "operatingSystem": "Any (web browser)",
+          "browserRequirements": "Requires JavaScript for the interactive app; documentation and the public API need none.",
+          "description": "IlliniHunt is a Product Hunt style launch board scoped to the University of Illinois Urbana-Champaign. Students, faculty, and staff publish projects; the community upvotes and comments. Browsing and the read API are open to everyone; posting requires an @illinois.edu account.",
+          "inLanguage": "en-US",
+          "isAccessibleForFree": true,
+          "license": "https://opensource.org/licenses/MIT",
+          "softwareHelp": { "@type": "CreativeWork", "url": "https://illinihunt.org/developers" },
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD", "availability": "https://schema.org/InStock" },
+          "featureList": [
+            "Browse and search University of Illinois student, faculty, and staff projects",
+            "Upvote and comment on projects",
+            "Time-decayed trending rankings",
+            "Curated public collections",
+            "Public unauthenticated read API with an OpenAPI description"
+          ],
+          "publisher": { "@id": "https://illinihunt.org/#organization" },
+          "sameAs": ["https://github.com/gies-ai-experiments/illinihunt"]
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://illinihunt.org/#organization",
+          "name": "IlliniHunt",
+          "legalName": "Disruption Lab, Gies College of Business, University of Illinois Urbana-Champaign",
+          "url": "https://illinihunt.org/",
+          "logo": "https://illinihunt.org/homepage.png",
+          "description": "IlliniHunt is operated by the Disruption Lab at Gies College of Business, University of Illinois Urbana-Champaign.",
+          "parentOrganization": {
+            "@type": "CollegeOrUniversity",
+            "name": "University of Illinois Urbana-Champaign",
+            "url": "https://illinois.edu/"
+          },
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "515 East Gregory Drive",
+            "addressLocality": "Champaign",
+            "addressRegion": "IL",
+            "postalCode": "61820",
+            "addressCountry": "US"
+          },
+          "contactPoint": [{
+            "@type": "ContactPoint",
+            "contactType": "technical support",
+            "url": "https://github.com/gies-ai-experiments/illinihunt/issues",
+            "availableLanguage": ["English"],
+            "areaServed": "US"
+          }],
+          "sameAs": ["https://github.com/gies-ai-experiments/illinihunt"]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root">
-      <!-- Initial loading indicator while Supabase initializes -->
-      <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #f9fafb;">
-        <div style="text-align: center;">
-          <div style="width: 32px; height: 32px; border: 2px solid #FF6B35; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: spin 1s linear infinite;"></div>
-          <style>
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          </style>
+      <!-- Server-rendered fallback. The React app replaces this on mount; it is
+           what crawlers and agents without JavaScript see, and it must stay a
+           truthful summary of the live page. -->
+      <div style="min-height:100vh;background:#050A14;color:#CBD5E1;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+        <div style="max-width:44rem;margin:0 auto;padding:2rem 1.125rem">
+          <h1 style="color:#fff;font-size:1.85rem;line-height:1.2;margin:0 0 .75rem">IlliniHunt — discover what the University of Illinois has built</h1>
+          <p style="color:#94A3B8;margin:0 0 1.5rem">A launch board for the University of Illinois Urbana-Champaign. Students, faculty, and staff post the apps, startups, research tools, and side projects they have built; the campus community upvotes and comments on them.</p>
+          <p>Browsing is open to everyone. Submitting a project, voting, and commenting require signing in with an @illinois.edu account through the university's Microsoft Entra ID tenant. Projects are filed under eight categories — Business &amp; Entrepreneurship, Creative &amp; Entertainment, Emerging Technology, Health &amp; Wellness, Learning &amp; Education Tools, Productivity &amp; Organization, Research &amp; Data Analysis, and Social &amp; Communication.</p>
+          <p>The home page lists projects newest first. The <a href="/trending" style="color:#FF8C5A">trending page</a> ranks them by a time-decay score, so recent momentum beats old vote totals.</p>
+          <h2 style="color:#fff;font-size:1.15rem;margin:2rem 0 .5rem">Browse</h2>
+          <ul style="padding-left:1.15rem">
+            <li><a href="/" style="color:#FF8C5A">All projects</a></li>
+            <li><a href="/trending" style="color:#FF8C5A">Trending projects</a></li>
+            <li><a href="/collections/discover" style="color:#FF8C5A">Public collections</a></li>
+            <li><a href="/submit" style="color:#FF8C5A">Submit a project</a> (requires @illinois.edu sign-in)</li>
+          </ul>
+          <h2 style="color:#fff;font-size:1.15rem;margin:2rem 0 .5rem">For developers and agents</h2>
+          <p>IlliniHunt publishes an unauthenticated read API over its whole catalog, with no key and no signup.</p>
+          <ul style="padding-left:1.15rem">
+            <li><a href="/developers" style="color:#FF8C5A">Developer documentation</a> — endpoints, parameters, pagination, rate limits, errors</li>
+            <li><a href="/openapi.json" style="color:#FF8C5A">openapi.json</a> — OpenAPI 3.1 description of every public endpoint</li>
+            <li><a href="/llms.txt" style="color:#FF8C5A">llms.txt</a> — when an agent should and should not use this site</li>
+            <li><a href="/docs" style="color:#FF8C5A">Documentation index</a></li>
+          </ul>
+          <h2 style="color:#fff;font-size:1.15rem;margin:2rem 0 .5rem">About</h2>
+          <ul style="padding-left:1.15rem">
+            <li><a href="/about" style="color:#FF8C5A">About IlliniHunt</a></li>
+            <li><a href="/contact" style="color:#FF8C5A">Contact and content removal</a></li>
+            <li><a href="/privacy" style="color:#FF8C5A">Privacy</a></li>
+          </ul>
+          <p style="color:#64748B;font-size:.83rem;margin-top:2.5rem">IlliniHunt · Disruption Lab, Gies College of Business, University of Illinois Urbana-Champaign · <a href="https://github.com/gies-ai-experiments/illinihunt" style="color:#94A3B8">Source</a></p>
         </div>
       </div>
     </div>

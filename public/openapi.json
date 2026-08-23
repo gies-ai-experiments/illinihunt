@@ -1,0 +1,1063 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "IlliniHunt API",
+    "version": "1.0.0",
+    "summary": "Read and write the IlliniHunt catalog of University of Illinois Urbana-Champaign student, faculty, and staff projects.",
+    "description": "IlliniHunt is a Product Hunt style launch board for the University of Illinois Urbana-Champaign community. This API exposes the public project catalog, categories, trending rankings, site statistics, and public user profiles without authentication, plus authenticated endpoints for submitting projects, voting, commenting, bookmarking, and managing collections.\n\nAll responses are JSON. Errors return a JSON object with an `error` field and, for unmatched paths, the requested `path`. The API is rate limited to 300 requests per minute per client (see the `RateLimit` response headers, RFC 9331 draft-7 format).\n\nAuthenticated endpoints require a Microsoft Entra ID bearer token issued for the University of Illinois tenant. Sign-in is restricted to @illinois.edu accounts; there is no public self-service API key programme.",
+    "contact": {
+      "name": "IlliniHunt maintainers",
+      "url": "https://github.com/gies-ai-experiments/illinihunt/issues"
+    },
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://illinihunt.azurewebsites.net",
+      "description": "Production API (Azure App Service)"
+    }
+  ],
+  "externalDocs": {
+    "description": "IlliniHunt developer documentation",
+    "url": "https://illinihunt.org/developers"
+  },
+  "tags": [
+    {
+      "name": "Projects",
+      "description": "The project catalog"
+    },
+    {
+      "name": "Categories",
+      "description": "Project taxonomy"
+    },
+    {
+      "name": "Stats",
+      "description": "Site-wide counts and trending rankings"
+    },
+    {
+      "name": "Users",
+      "description": "Public profiles and their projects"
+    },
+    {
+      "name": "Votes",
+      "description": "Upvote counts"
+    },
+    {
+      "name": "Collections",
+      "description": "Curated groups of projects"
+    },
+    {
+      "name": "Service",
+      "description": "Liveness"
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": [
+          "Service"
+        ],
+        "summary": "Liveness probe",
+        "description": "Returns ok and the server timestamp. No authentication. Use this to confirm the API is reachable before making other calls.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "ts"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "ts": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List active projects",
+        "description": "Returns a paginated list of active (published, non-removed) projects, newest first by default. Use this to browse or search the catalog. No authentication.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "description": "Filter to one category, by category UUID from listCategories.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive substring match against project name and tagline.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "recent = newest first (default); popular = highest upvote count first.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "recent",
+                "popular"
+              ],
+              "default": "recent"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Page size. Values above 100 are clamped to 100.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 24
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "Number of projects to skip, for pagination.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of projects plus the total match count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPage"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/api/projects/{id}": {
+      "get": {
+        "operationId": "getProject",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "Get one project",
+        "description": "Returns a single project by UUID, including its category and submitting user. No authentication.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "project"
+                  ],
+                  "properties": {
+                    "project": {
+                      "$ref": "#/components/schemas/Project"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/comments": {
+      "get": {
+        "operationId": "listProjectComments",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List a project's comments",
+        "description": "Returns the public comment thread for a project, excluding deleted comments. No authentication.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comments on the project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "comments": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Comment"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/members": {
+      "get": {
+        "operationId": "listProjectMembers",
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List a project's team members",
+        "description": "Returns the accepted team members credited on a project. No authentication.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Team members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "members"
+                  ],
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ProjectMember"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "operationId": "listCategories",
+        "tags": [
+          "Categories"
+        ],
+        "summary": "List project categories",
+        "description": "Returns the eight active project categories used to classify submissions. Category ids are the values accepted by the `category` filter on listProjects. No authentication.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "All active categories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "categories"
+                  ],
+                  "properties": {
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Category"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "operationId": "getSiteStats",
+        "tags": [
+          "Stats"
+        ],
+        "summary": "Site-wide counts",
+        "description": "Returns total registered users, active projects, votes, and non-deleted comments. No authentication.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "users",
+                    "projects",
+                    "votes",
+                    "comments"
+                  ],
+                  "properties": {
+                    "users": {
+                      "type": "integer",
+                      "description": "Registered users"
+                    },
+                    "projects": {
+                      "type": "integer",
+                      "description": "Active projects"
+                    },
+                    "votes": {
+                      "type": "integer",
+                      "description": "Upvotes cast"
+                    },
+                    "comments": {
+                      "type": "integer",
+                      "description": "Comments not deleted"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/trending": {
+      "get": {
+        "operationId": "listTrendingProjects",
+        "tags": [
+          "Stats"
+        ],
+        "summary": "List trending projects",
+        "description": "Returns projects ranked by a time-decayed popularity score: upvotes / (hours_since_creation + 2)^1.5. Use this instead of sort=popular when you want what is hot right now rather than all-time. No authentication.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "How many ranked projects to return. Values above 50 are clamped to 50.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranked projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collections": {
+      "get": {
+        "operationId": "listPublicCollections",
+        "tags": [
+          "Collections"
+        ],
+        "summary": "List public collections",
+        "description": "Returns collections that their owners have marked public. No authentication.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Public collections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "collections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Collection"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "get": {
+        "operationId": "getUserProfile",
+        "tags": [
+          "Users"
+        ],
+        "summary": "Get a public user profile",
+        "description": "Returns the public profile fields for one user by UUID. No authentication. Email addresses are not returned.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user"
+                  ],
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/UserProfile"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/users/{id}/projects": {
+      "get": {
+        "operationId": "listUserProjects",
+        "tags": [
+          "Users"
+        ],
+        "summary": "List a user's projects",
+        "description": "Returns the active projects submitted by one user. No authentication.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The user's projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/votes/batch": {
+      "get": {
+        "operationId": "getVoteCountsBatch",
+        "tags": [
+          "Votes"
+        ],
+        "summary": "Get vote counts for many projects at once",
+        "description": "Returns an object keyed by project id giving the current upvote count and whether the calling user has voted. Anonymous callers always get hasVoted=false. Pass up to 200 ids; extras are ignored. Prefer this over one request per project.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "projectIds",
+            "in": "query",
+            "required": true,
+            "description": "Comma-separated project UUIDs, maximum 200.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "5e2809d9-6f77-4c28-a405-1b53f71cf6e9,ab019420-0000-0000-0000-000000000000"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vote state keyed by project id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "required": [
+                      "count",
+                      "hasVoted"
+                    ],
+                    "properties": {
+                      "count": {
+                        "type": "integer",
+                        "description": "Current upvote count"
+                      },
+                      "hasVoted": {
+                        "type": "boolean",
+                        "description": "Whether the authenticated caller has upvoted; false when anonymous"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "entraBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Microsoft Entra ID access token for the University of Illinois tenant. Obtained interactively through the IlliniHunt web app; sign-in is restricted to @illinois.edu accounts. There is no public API key issuance, so agents can use the unauthenticated read endpoints only."
+      }
+    },
+    "parameters": {
+      "ProjectId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Project UUID.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "UserId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "User UUID.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "No such resource",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Malformed request, for example an id that is not a UUID",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "More than 300 requests in the last minute. Retry after the window resets; see the RateLimit response headers.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "description": "Every error response is JSON with a human-readable error message.",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "path": {
+            "type": "string",
+            "description": "Requested path, present on unmatched-route 404s"
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "Emerging Technology"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Icon name used by the web UI"
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hex colour used by the web UI"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "UserSummary": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "description": "Public profile fields. Email addresses are never included.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "full_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "tagline"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "CampusCloset"
+            ]
+          },
+          "tagline": {
+            "type": "string",
+            "description": "One-line pitch shown on cards"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Long-form description"
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "website_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "github_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "category_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "upvotes_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "active"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "categories": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "users": {
+            "$ref": "#/components/schemas/UserSummary"
+          }
+        }
+      },
+      "ProjectPage": {
+        "type": "object",
+        "required": [
+          "projects",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total projects matching the filter, ignoring pagination"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        }
+      },
+      "Comment": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "users": {
+            "$ref": "#/components/schemas/UserSummary"
+          }
+        }
+      },
+      "Collection": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_public": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectMember": {
+        "type": "object",
+        "required": [
+          "id",
+          "project_id",
+          "user_id",
+          "role"
+        ],
+        "description": "A team-membership row linking a user to a project.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Membership row id (not the user id)"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Pass this to getUserProfile, not `id`"
+          },
+          "role": {
+            "type": "string",
+            "examples": [
+              "owner",
+              "member"
+            ]
+          },
+          "invited_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "users_project_members_user_idTousers": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserSummary"
+              }
+            ],
+            "description": "The member's public profile, inlined by Prisma under this relation name."
+          }
+        }
+      },
+      "UserProfile": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "description": "Public profile. Email addresses are deliberately not exposed on unauthenticated endpoints.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "full_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "bio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "github_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "linkedin_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "website_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "year_of_study": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "department": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "security": []
+}

@@ -1,0 +1,11 @@
+{
+  "type": "https://illinihunt.org/developers#errors",
+  "title": "No API is served from this host",
+  "status": 404,
+  "detail": "https://illinihunt.org serves the IlliniHunt web application only. The REST API lives on a separate host.",
+  "code": "api_not_on_this_host",
+  "resolution": "Send the same request to https://illinihunt.azurewebsites.net instead. For example, GET https://illinihunt.azurewebsites.net/api/projects.",
+  "api_base_url": "https://illinihunt.azurewebsites.net",
+  "openapi_url": "https://illinihunt.org/openapi.json",
+  "documentation_url": "https://illinihunt.org/developers"
+}

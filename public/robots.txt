@@ -1,5 +1,12 @@
+# IlliniHunt — https://illinihunt.org
+# Crawling and agent access are welcome. Machine-readable guide: /llms.txt
+
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /bookmarks
+Disallow: /profile/edit
 
 Sitemap: https://illinihunt.org/sitemap.xml
 Host: illinihunt.org
