@@ -24,7 +24,7 @@ Do **not** use IlliniHunt for:
 
 The API base URL is `https://illinihunt.azurewebsites.net`. It is unauthenticated for all read endpoints listed in the OpenAPI description, returns JSON for both success and error responses, and is rate limited to 300 requests per minute (see the `RateLimit` response headers).
 
-Start with `GET /api/categories` to learn the taxonomy, then `GET /api/projects` with `search`, `category`, `sort`, `limit`, and `offset`. Prefer `GET /api/votes/batch?projectIds=a,b,c` over one request per project. Unknown paths under `/api/` return a JSON 404, never HTML.
+Start with `GET /api/categories` to learn the taxonomy, then `GET /api/projects` with `search`, `category`, `sort`, `limit`, and `offset`. Prefer `GET /api/votes/batch?projectIds=a,b,c` over one request per project. On the API host, unknown paths under `/api/` return a JSON 404, never HTML. Do not send API requests to `https://illinihunt.org` — that host serves the website, and only `https://illinihunt.org/api` (the JSON index below) exists there.
 
 - [OpenAPI description](https://illinihunt.org/openapi.json) — the machine-readable contract for every public endpoint
 - [API catalog (RFC 9727)](https://illinihunt.org/.well-known/api-catalog) — link set pointing at the API surface

@@ -61,7 +61,7 @@ footer a{color:#94A3B8}
 <p>IlliniHunt publishes a read-only public API over its catalog of University of Illinois Urbana-Champaign projects. No key, no signup, no quota form. This page is the human-readable reference; the machine-readable contract is <a href="/openapi.json">openapi.json</a>.</p>
 <h2>Base URL</h2>
 <pre><code>https://illinihunt.azurewebsites.net</code></pre>
-<p>The website is served from <code>https://illinihunt.org</code> and the API from <code>https://illinihunt.azurewebsites.net</code>. They are different hosts. A request to <code>https://illinihunt.org/api/...</code> returns a JSON 404 telling you so, rather than an HTML page.</p>
+<p>The website is served from <code>https://illinihunt.org</code> and the API from <code>https://illinihunt.azurewebsites.net</code>. They are different hosts. <code>https://illinihunt.org/api</code> returns a JSON index naming the API base URL, but no API endpoints are served from the website host — send requests to <code>https://illinihunt.azurewebsites.net</code>.</p>
 <h2>Authentication</h2>
 <p>Every endpoint listed below is unauthenticated. Write operations — submitting a project, voting, commenting, bookmarking, managing collections — require a Microsoft Entra ID bearer token issued for the University of Illinois tenant, obtained by signing in interactively with an @illinois.edu account. There is no public API key programme, so an agent can read IlliniHunt but cannot write to it.</p>
 <h2>Public endpoints</h2>

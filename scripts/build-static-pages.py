@@ -166,7 +166,7 @@ IlliniHunt publishes a read-only public API over its catalog of University of Il
 {api}
 ```
 
-The website is served from `{site}` and the API from `{api}`. They are different hosts. A request to `{site}/api/...` returns a JSON 404 telling you so, rather than an HTML page.
+The website is served from `{site}` and the API from `{api}`. They are different hosts. `{site}/api` returns a JSON index naming the API base URL, but no API endpoints are served from the website host — send requests to `{api}`.
 
 ## Authentication
 

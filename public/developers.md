@@ -10,7 +10,7 @@ IlliniHunt publishes a read-only public API over its catalog of University of Il
 https://illinihunt.azurewebsites.net
 ```
 
-The website is served from `https://illinihunt.org` and the API from `https://illinihunt.azurewebsites.net`. They are different hosts. A request to `https://illinihunt.org/api/...` returns a JSON 404 telling you so, rather than an HTML page.
+The website is served from `https://illinihunt.org` and the API from `https://illinihunt.azurewebsites.net`. They are different hosts. `https://illinihunt.org/api` returns a JSON index naming the API base URL, but no API endpoints are served from the website host — send requests to `https://illinihunt.azurewebsites.net`.
 
 ## Authentication
 
