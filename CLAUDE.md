@@ -19,11 +19,23 @@
 > routine push to `main` would deploy the old Supabase build over production. Verified
 > 2026-08-23 (`az staticwebapp show -n illinihunt-dev -g DL_ResourceGroup_01 --query branch`).
 >
-> **Deploying the API is a two-step:** pushing here deploys to the `staging` *slot* only
-> (`azure-webapp-api.yml`); production needs a manual slot swap. The slot's app settings must
-> match production or the deploy fails — `SCM_DO_BUILD_DURING_DEPLOYMENT` and
-> `ENABLE_ORYX_BUILD` must both be `false`, or App Service re-runs Oryx over the already-built
-> package and dies on `tsc: not found`.
+> **The API deploys as a CONTAINER — not a slot swap.** Production `illinihunt` runs
+> `DOCKER|illinihuntdevacr.azurecr.io/illinihunt-api:latest`. `azure-webapp-api.yml` builds
+> `api/Dockerfile`, pushes `:latest` + `:<sha>` to ACR, and the enabled webhook `illinihuntapicd`
+> (scoped to `illinihunt-api:latest`) posts to production's docker hook; the pull lands in ~30s.
+> Rollback = re-tag the previous image as `:latest`.
+>
+> The `staging` slot is **NODE|22-lts**, a code deploy — *not* swap-compatible with a DOCKER
+> production, and currently 503. `azure-webapp-api-codebased.yml` targets it and is parked on
+> `workflow_dispatch`. **Do not swap that slot into production**: it would replace production's
+> container configuration with a code-based one. (Between 2026-06-09 and 2026-08-23 the
+> code-based workflow had overwritten the container one, so every `api/**` push deployed to that
+> unused slot and production silently kept serving the 2026-06-09 image.)
+>
+> `api/tsconfig.json` must keep excluding `src/**/*.test.ts`. `vitest` is a *root*
+> devDependency, so a dev machine and the CI runner both resolve it by hoisting out of
+> `api/node_modules` — but `api/Dockerfile` has no parent to hoist from, so an included test
+> file fails the image build and nothing else catches it.
 
 
 > **Migrated off Supabase + Vercel (2026-06).** The app no longer uses Supabase or Vercel. Auth is Microsoft Entra ID (UIUC tenant) via MSAL; data is a dedicated `illinihunt` database on the shared `dl-postgresqlserver-01` server; images are in Azure Blob `illinihuntdevsa`. The React SPA talks to a new Express API (`api/` subdir), never to the DB directly. Old `illinihunt-dev-db` Postgres is retained temporarily for rollback. See [`docs/superpowers/specs/2026-05-26-azure-migration-design.md`](docs/superpowers/specs/2026-05-26-azure-migration-design.md).
@@ -113,8 +125,14 @@ cd api && npm run prisma:generate
   `responseOverrides`). A responseOverride rewrite preserves the original status anyway.
 - Known-unfixable on SWA: `markdown-negotiation-vary` needs `Accept:`-based content negotiation,
   which Static Web Apps cannot do. It would need the site served from the Express app instead.
+- **The API had no working deploy path for ten weeks.** The container workflow had been
+  overwritten by a code-based one targeting an unused `staging` slot (see the deploy note at the
+  top). Restored; the email fix reached production as image
+  `sha256:d27d9ff57778f8f6de59775e66d0be28b2740b3e934d7ba4f72c9398be39c786`, verified 0/10
+  profiles leaking afterwards.
 - Verification script: `scripts/verify-agentic.sh <host>` — 58 assertions, every one a live
-  request. Re-run it after any change to `staticwebapp.config.json` or the public pages.
+  request, all passing as of 2026-08-23. Re-run it after any change to
+  `staticwebapp.config.json`, the public pages, or the API's public endpoints.
 
 ### 2026-06-06
 - Completed: **Full Supabase+Vercel → Azure migration, then consolidated onto shared lab infra.** (1) Built new Express+Prisma API (`api/`), Entra ID auth (MSAL redirect flow), 50+ endpoints replacing all Supabase SDK + 19 RPCs. (2) Migrated data to a dedicated `illinihunt` DB on shared `dl-postgresqlserver-01` (PG18) with scoped role `illinihunt_user` — 73 users/34 projects/99 votes verified, `entra_oid` linkage preserved. (3) Migrated 38 images Supabase Storage → Azure Blob `illinihuntdevsa`, rewrote 23 image URLs. (4) API runs on **App Service `illinihunt`** (container from ACR `illinihuntdevacr`, debian-slim for Prisma/OpenSSL3), replacing the initial Container Apps deploy (deleted). (5) Frontend on **Azure Static Web Apps**. (6) CI/CD: `git push` → GH Actions builds API image → ACR → webhook → App Service auto-pull; SWA workflow for frontend. (7) Moved ACR/Storage/SWA into `DL_ResourceGroup_01`; deleted Container App+env+Log-Analytics workspace. Debugging notes: terser broke shadcn `Avatar` cross-chunk re-export → switched Vite to esbuild minifier + dropped manualChunks; `supabase.ts` now a lazy throwing-stub so missing Supabase env doesn't crash boot; `main.tsx` env guard now requires Azure vars; popup auth hit `block_nested_popups` → redirect flow; Entra scope is `Files.Read` (pre-existing, works) not `access_as_user`.
