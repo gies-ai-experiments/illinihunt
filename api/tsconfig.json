@@ -15,5 +15,10 @@
     "noUncheckedIndexedAccess": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // Tests belong to the root vitest project and are never compiled into dist.
+  // They must be excluded here: `vitest` is a root devDependency, and inside
+  // api/Dockerfile there is no parent node_modules to resolve it from — so
+  // including them breaks the image build even though the same `tsc` passes
+  // on a dev machine and on the CI runner, where hoisting hides the problem.
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
 }
