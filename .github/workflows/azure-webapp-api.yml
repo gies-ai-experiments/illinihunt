@@ -1,100 +1,57 @@
-name: Build and deploy IlliniHunt (frontend + API) to Azure Web App - staging
+name: Deploy API to Azure Web App
 
-# Container-free, single-web-app deploy (MindForum pattern). The runner builds
-# a fully self-contained package — frontend SPA + API dist + ALL production
-# node_modules (incl. the generated Prisma client) — and ships it prebuilt.
-# App Service does NO build (SCM_DO_BUILD_DURING_DEPLOYMENT=false); it just runs
-# `node dist/index.js`, which serves /api/* and the SPA from ./public.
+# Container-based deploy (current production method). GitHub builds the
+# Express API image, pushes to Azure Container Registry; App Service
+# `illinihunt` runs that image. An ACR webhook (illinihuntapicd) triggers the
+# pull on :latest push.
 #
-# Currently targets the `staging` slot for verification; swap to Production
-# once confirmed.
+# Restored as the API deploy path on 2026-08-23. This file had been overwritten
+# by a code-based (Oryx/Node) variant that ships to the `staging` slot — now
+# parked in azure-webapp-api-codebased.yml. Production is DOCKER and the slot is
+# NODE|22-lts, so the two are not swap-compatible; for ~10 weeks every api/**
+# push therefore deployed to a slot nothing swaps in, while production kept
+# serving the image built on 2026-06-09.
+#
+# Rollback: the previous production image is
+#   illinihuntdevacr.azurecr.io/illinihunt-api:2302fe309e5d14e193b943e2a08362f903f713ca
+#   (digest sha256:f29a5f605486608a379453257061c1a11913fc2235f9161acdf42fe68d9c8d4f)
+# Re-tag that as :latest and the ACR webhook redeploys it automatically.
 
 on:
   push:
-    branches: [main, azure-migration]
+    # azure-migration only: `main` predates the migration and has no api/
+    # directory, so building ./api from it would fail every time.
+    branches: [azure-migration]
     paths:
       - 'api/**'
-      - 'src/**'
-      - 'index.html'
-      - 'vite.config.ts'
-      - 'package.json'
       - '.github/workflows/azure-webapp-api.yml'
   workflow_dispatch: {}
 
+env:
+  ACR_LOGIN_SERVER: illinihuntdevacr.azurecr.io
+  IMAGE_NAME: illinihunt-api
+
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
         with:
-          node-version: '22.x'
+          registry: illinihuntdevacr.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build frontend
-        run: |
-          npm ci
-          npm run build
-        env:
-          VITE_API_URL: /api
-          VITE_AZURE_TENANT_ID: ${{ vars.VITE_AZURE_TENANT_ID }}
-          VITE_AZURE_CLIENT_ID: ${{ vars.VITE_AZURE_CLIENT_ID }}
-          VITE_AZURE_API_CLIENT_ID: ${{ vars.VITE_AZURE_API_CLIENT_ID }}
-          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
-
-      - name: Build API + production node_modules
-        working-directory: ./api
-        run: |
-          npm ci
-          npm run build
-          npm prune --omit=dev
-          # prune wipes node_modules/.prisma — regenerate it (prisma CLI is a
-          # prod dep so it survived the prune).
-          npx prisma generate
-
-      - name: Assemble self-contained package
-        run: |
-          mkdir -p azure-package
-          cp -R api/dist azure-package/dist
-          cp -R api/node_modules azure-package/node_modules
-          cp -R api/prisma azure-package/prisma
-          cp api/package.json azure-package/package.json
-          cp api/package-lock.json azure-package/package-lock.json
-          cp -R dist azure-package/public
-
-      - name: Verify package is complete (fail fast if not)
-        run: |
-          set -e
-          test -f azure-package/dist/index.js              || { echo "MISSING dist/index.js"; exit 1; }
-          test -f azure-package/node_modules/dotenv/package.json       || { echo "MISSING dotenv"; exit 1; }
-          test -f azure-package/node_modules/express/package.json      || { echo "MISSING express"; exit 1; }
-          test -d azure-package/node_modules/.prisma/client            || { echo "MISSING .prisma/client"; exit 1; }
-          test -f azure-package/node_modules/@prisma/client/package.json || { echo "MISSING @prisma/client"; exit 1; }
-          test -f azure-package/public/index.html          || { echo "MISSING public/index.html"; exit 1; }
-          ls azure-package/node_modules/.prisma/client/ | grep -q 'libquery_engine-debian' || { echo "MISSING debian prisma engine"; exit 1; }
-          echo "Package complete ✓"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Build and push image
+        uses: docker/build-push-action@v6
         with:
-          name: illinihunt-app
-          path: azure-package
+          context: ./api
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: illinihunt-app
-          path: azure-package
-
-      - name: Deploy to Azure Web App (staging slot)
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: illinihunt
-          slot-name: staging
-          package: azure-package
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_STAGING }}
+      - name: Note
+        run: echo "Pushed :latest + :${{ github.sha }}. App Service auto-pulls via ACR webhook."

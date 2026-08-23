@@ -1,0 +1,93 @@
+name: (inactive) Code-based frontend+API deploy to the illinihunt staging slot
+
+# NOT the production deploy path. Production runs a CONTAINER pulled from ACR
+# (linuxFxVersion = DOCKER|illinihuntdevacr.azurecr.io/illinihunt-api:latest);
+# see azure-webapp-api.yml, which is what actually ships the API.
+#
+# This workflow ships a prebuilt, container-free package to the `staging` slot.
+# It was written on 2026-06-09 as a candidate replacement for the container
+# deploy and then never adopted: the slot is NODE|22-lts while production is
+# DOCKER, so the two are not swap-compatible, and the slot currently returns
+# 503. Kept on workflow_dispatch so the work is not lost, but do not run it
+# expecting a production change — nothing swaps this slot in.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Build frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          VITE_API_URL: /api
+          VITE_AZURE_TENANT_ID: ${{ vars.VITE_AZURE_TENANT_ID }}
+          VITE_AZURE_CLIENT_ID: ${{ vars.VITE_AZURE_CLIENT_ID }}
+          VITE_AZURE_API_CLIENT_ID: ${{ vars.VITE_AZURE_API_CLIENT_ID }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+
+      - name: Build API + production node_modules
+        working-directory: ./api
+        run: |
+          npm ci
+          npm run build
+          npm prune --omit=dev
+          # prune wipes node_modules/.prisma — regenerate it (prisma CLI is a
+          # prod dep so it survived the prune).
+          npx prisma generate
+
+      - name: Assemble self-contained package
+        run: |
+          mkdir -p azure-package
+          cp -R api/dist azure-package/dist
+          cp -R api/node_modules azure-package/node_modules
+          cp -R api/prisma azure-package/prisma
+          cp api/package.json azure-package/package.json
+          cp api/package-lock.json azure-package/package-lock.json
+          cp -R dist azure-package/public
+
+      - name: Verify package is complete (fail fast if not)
+        run: |
+          set -e
+          test -f azure-package/dist/index.js              || { echo "MISSING dist/index.js"; exit 1; }
+          test -f azure-package/node_modules/dotenv/package.json       || { echo "MISSING dotenv"; exit 1; }
+          test -f azure-package/node_modules/express/package.json      || { echo "MISSING express"; exit 1; }
+          test -d azure-package/node_modules/.prisma/client            || { echo "MISSING .prisma/client"; exit 1; }
+          test -f azure-package/node_modules/@prisma/client/package.json || { echo "MISSING @prisma/client"; exit 1; }
+          test -f azure-package/public/index.html          || { echo "MISSING public/index.html"; exit 1; }
+          ls azure-package/node_modules/.prisma/client/ | grep -q 'libquery_engine-debian' || { echo "MISSING debian prisma engine"; exit 1; }
+          echo "Package complete ✓"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: illinihunt-app
+          path: azure-package
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: illinihunt-app
+          path: azure-package
+
+      - name: Deploy to Azure Web App (staging slot)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: illinihunt
+          slot-name: staging
+          package: azure-package
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_STAGING }}
