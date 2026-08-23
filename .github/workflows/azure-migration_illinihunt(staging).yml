@@ -3,10 +3,13 @@
 
 name: Build and deploy Node.js app to Azure Web App - illinihunt
 
+# DISABLED on push (2026-08-23). This portal-generated workflow deploys the raw
+# repo (`package: .`) to the same `staging` slot as azure-webapp-api.yml, which
+# ships a prebuilt, self-contained package. Both firing on one push raced on the
+# slot, and this one has failed every run since 2026-06-09 because App Service
+# then runs an Oryx build that cannot find `tsc` (a devDependency). Kept for
+# manual dispatch only; azure-webapp-api.yml is the real API deploy.
 on:
-  push:
-    branches:
-      - azure-migration
   workflow_dispatch:
 
 jobs:

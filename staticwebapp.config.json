@@ -16,7 +16,6 @@
     { "route": "/.well-known/api-catalog", "rewrite": "/well-known-api-catalog.json", "headers": { "content-type": "application/linkset+json" } },
 
     { "route": "/api", "rewrite": "/api-index.json", "headers": { "content-type": "application/json" } },
-    { "route": "/api/", "rewrite": "/api-index.json", "headers": { "content-type": "application/json" } },
     { "route": "/api/*", "rewrite": "/api-error.json", "statusCode": 404, "headers": { "content-type": "application/problem+json" } },
 
     { "route": "/about", "rewrite": "/about.html" },
