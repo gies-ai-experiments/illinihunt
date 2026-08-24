@@ -1,5 +1,17 @@
 # AGENTS.md
 
+> ### ⚠️ Stale as of 2026-08-23 — read this first
+>
+> This file describes the **pre-migration Supabase stack**. IlliniHunt now runs on Azure:
+> Express + Prisma against Azure Postgres, Entra ID (MSAL) auth, Azure Blob storage, Azure
+> Static Web Apps. The Supabase project `catzwowmxluzwbhdyhnf` has been **deleted** (issue #93),
+> so every `npx supabase` / `mcp__supabase__*` command below will fail, and the RLS and Google
+> OAuth guidance no longer describes the running system — authorization lives in the Express
+> handlers now.
+>
+> **The current stack is documented on the `azure-migration` branch** (its `CLAUDE.md` and
+> `docs/superpowers/specs/2026-05-26-azure-migration-design.md`). Treat this file as history.
+
 ## Project Overview
 
 IlliniHunt V2 is a Product Hunt-style platform for the University of Illinois community to showcase projects, apps, and startups. This file provides instructions for AI agents working with this codebase.
@@ -76,10 +88,8 @@ npm run dev
 
 ### Database Changes
 ```bash
-# After any database schema changes:
-npx supabase gen types typescript --project-id catzwowmxluzwbhdyhnf > src/lib/types/database.ts
-
-# Verify types compile:
+# HISTORICAL — Supabase is gone. On azure-migration the schema is Prisma:
+#   cd api && npm run prisma:pull && npm run prisma:generate
 npm run type-check
 ```
 
@@ -92,8 +102,8 @@ npm run type-check
 
 ## Database Conventions
 
-### Supabase Integration
-- Project ID: `catzwowmxluzwbhdyhnf`
+### Supabase Integration — RETIRED
+- Project `catzwowmxluzwbhdyhnf` was deleted (#93). The points below are historical.
 - Always use Row Level Security (RLS) policies
 - Use generated TypeScript types from `src/lib/types/database.ts`
 - Implement optimistic updates for better UX
@@ -259,10 +269,9 @@ npm run type-check   # TypeScript validation
 npm run lint         # ESLint check
 npm run lint:fix     # Auto-fix linting issues
 
-# Supabase
-npx supabase gen types typescript --project-id catzwowmxluzwbhdyhnf > src/lib/types/database.ts
-npx supabase db pull --project-id catzwowmxluzwbhdyhnf
-npx supabase migration new <name>
+# Database (azure-migration branch — Supabase project is deleted)
+cd api && npm run prisma:pull       # re-introspect Azure Postgres
+cd api && npm run prisma:generate
 ```
 
 ## Troubleshooting
@@ -284,7 +293,7 @@ npx supabase migration new <name>
    ```
 
 3. **Type errors after schema change**
-   - Regenerate types: `npx supabase gen types typescript --project-id catzwowmxluzwbhdyhnf > src/lib/types/database.ts`
+   - Regenerate types: `cd api && npm run prisma:pull && npm run prisma:generate` (Supabase codegen is dead)
    - Clear TypeScript cache: `rm -rf node_modules/.cache`
    - Run `npm run type-check` to verify
 

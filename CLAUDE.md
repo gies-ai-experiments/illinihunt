@@ -7,7 +7,7 @@
 **IlliniHunt V2** - Product Hunt for University of Illinois
 **Live**: https://illinihunt.org + https://www.illinihunt.org (both → **Azure Static Web Apps**, Cloudflare DNS-only) — fully off Vercel
 **Repo**: https://github.com/gies-ai-experiments/illinihunt
-**Legacy Supabase Project**: `catzwowmxluzwbhdyhnf` (deployed app no longer calls it — historical-data migration may still be pending, issue #93)
+**Legacy Supabase Project**: `catzwowmxluzwbhdyhnf` — **gone.** Hostname is NXDOMAIN from three public resolvers and both stored access tokens 401 (checked 2026-08-23). Data migration is reconciled and complete: 34 projects / 99 votes match the counts verified at migration time, all 34 predate the cutover, and all 23 image URLs are on Azure Blob with zero Supabase URLs left. Azure Postgres is now the **sole copy**. See #93.
 **Stack**: React 18 + TypeScript + **Azure App Service API** (`illinihunt.azurewebsites.net/api`) + **Entra ID (MSAL) auth** + **Azure Static Web Apps** frontend (migrating off Vercel) + Cloudflare DNS
 
 > ### ⚠️ The deployed code is on `azure-migration`, not `main`
@@ -45,10 +45,12 @@ npm run build        # Production build
 npm run type-check   # TypeScript validation
 npm run lint         # Code quality check
 
-# Supabase
-npx supabase gen types typescript --project-id catzwowmxluzwbhdyhnf > src/types/database.ts
-mcp__supabase__execute_sql({ project_id: "catzwowmxluzwbhdyhnf", query: "..." })
-mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "...", query: "..." })
+# Database — Supabase is GONE (project catzwowmxluzwbhdyhnf deleted; see #93).
+# There are no `npx supabase` or mcp__supabase__* commands for this project any
+# more, and src/types/database.ts on this branch is a pre-migration artefact.
+# The live schema is Prisma against Azure Postgres, on the azure-migration branch:
+#   cd api && npm run prisma:pull        # re-introspect from DATABASE_URL
+#   cd api && npm run prisma:generate
 ```
 
 ## Architecture Overview
@@ -64,7 +66,9 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
 
 ## Current Focus
 - [x] **Azure frontend cutover COMPLETE (2026-06-09)** — apex + `www` both serve from Azure Static Web Apps (`illinihunt-dev`, RG `DL_ResourceGroup_01`, DNS-only CNAMEs), fully off Vercel. Backend on Azure App Service API (`illinihunt.azurewebsites.net`) + Entra auth; no Supabase calls remain. Auth confirmed single-tenant UIUC + `@illinois.edu` (not a regression).
-- [ ] **Azure backend data migration + Supabase decommission** — issue #93 (keshavdalmia10, handling — **no activity since 2026-06-09**, chase or take it back). App runs on Azure. The "Azure 24 vs Supabase ~34" reconcile is **resolved**: `GET /api/stats` reported 34 active projects on 2026-08-23. Remaining: **backup → pause → delete-later** the Supabase project `catzwowmxluzwbhdyhnf` (decision: not a hard-delete; plan + stale-DB-password finding documented in #93 comment). Local `.env.local` Supabase DB password is stale (rotated).
+- [x] **Supabase decommission / data reconcile — issue #93** (taken back from Keshav 2026-08-23). The "Azure 24 vs Supabase ~34" blocker was a **pagination artefact**: `GET /api/projects` defaults to `limit=24` (`api/src/routes/projects.ts:15`), so the June check read the page size — `total` was 34 all along. Reconcile: projects 34=34, votes 99=99, users 73→75 (+2 signups, no loss); all 34 projects predate the cutover; 23/23 images on Azure Blob, 0 Supabase URLs. The Supabase project is already gone, so the planned backup is **not recoverable** — this reconcile is the only completeness evidence there will be.
+- [ ] **Sole-copy backup posture** (follow-on from #93): Azure Postgres `dl-postgresqlserver-01` has 35-day PITR but **geo-redundant backup Disabled** and no HA, and it is now the only copy of the student data. Geo-redundancy cannot be retrofitted to an existing Flexible Server → set up a scheduled logical `pg_dump` to Blob.
+- [ ] **Verify the submit flow end-to-end before semester traffic.** No user-generated content since 2026-05-11 — zero projects and zero comments since the June cutover — so the Azure/Entra submission path has never been exercised by a real user. Plausibly just a dormant summer, but worth an authenticated test now rather than after students arrive.
 - [ ] **Backend hardening — issue #98**: Key Vault for `DATABASE_URL`/secret conn strings; drop `localhost:5173` from prod CORS; optional UUID guards on other `:id` routes; optional **server-side `@illinois.edu` enforcement** (single-tenant admits B2B guests whose UPN isn't @illinois.edu — client gate alone wouldn't stop a direct API call; tenant + audience *are* enforced server-side).
 - [ ] Canonical-host redirect apex↔www — both serve directly now (old apex→www 307 is gone); SWA has no native host-based redirect. Minor.
 - [ ] Sweep deep docs (README, MENTAL_MODEL, `docs/setup/*`) off Vercel+Supabase language now that the migration is complete.
@@ -110,19 +114,28 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
   harmless — the SWA workflow has never existed there.
 - Verification: `scripts/verify-agentic.sh <host>` on `azure-migration` — 58 live assertions,
   all passing.
-- Next: (1) close **#95** (fix is deployed and verified — needs a comment + close); (2) backend
-  hardening **#98**; (3) **#93** Supabase decommission has had no movement since 2026-06-09 —
-  chase Keshav or take it back; note the "Azure 24 vs Supabase ~34" reconcile is resolved, the
-  Azure API now reports 34 active projects; (4) optional: publish a CLI (last is-agentic check
-  worth chasing); (5) the `staging` slot 503s — harmless, but dead weight.
+- **#93 taken back from Keshav and reconciled.** The 24-vs-34 blocker was a pagination
+  artefact (`GET /api/projects` defaults to `limit=24`; `total` was 34 all along). Projects
+  34=34 and votes 99=99 against the counts verified at migration time, all 34 predate the
+  cutover, 23/23 images on Azure Blob with zero Supabase URLs. The Supabase project itself is
+  **gone** — NXDOMAIN from three resolvers, both stored tokens 401 — so the planned pre-delete
+  backup can never be taken; this reconcile is the only completeness evidence there will be.
+  Stale Supabase credentials removed from `.env.local` and `~/.env` (backup in
+  `~/.local/share/illinihunt-env-backup-2026-08-23/`), and the dead `npx supabase` commands in
+  CLAUDE.md/AGENTS.md replaced with the Prisma equivalents.
+- Next: (1) **confirm in the Supabase dashboard** that `catzwowmxluzwbhdyhnf` is deleted, then
+  close **#93**; (2) close **#95** (email-leak fix deployed and verified); (3) **sole-copy
+  backup** — Azure Postgres is now the only copy and has no geo-redundancy; (4) **exercise the
+  submit flow** before semester traffic (no user content since 2026-05-11); (5) backend
+  hardening **#98**; (6) the `staging` slot 503s — harmless, dead weight.
 
 *Older entries archived to `docs/session-archive.md`.*
 
 ## Quick Troubleshooting
 
 ```bash
-# Type errors after schema changes
-npx supabase gen types typescript --project-id catzwowmxluzwbhdyhnf > src/types/database.ts && npm run type-check
+# Type errors after schema changes (azure-migration branch — Prisma, not Supabase)
+cd api && npm run prisma:pull && npm run prisma:generate && npm run build
 
 # Port conflicts
 npx kill-port 5173
