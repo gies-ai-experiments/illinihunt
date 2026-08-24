@@ -7,7 +7,7 @@
 **IlliniHunt V2** - Product Hunt for University of Illinois
 **Live**: https://illinihunt.org + https://www.illinihunt.org (both → **Azure Static Web Apps**, Cloudflare DNS-only) — fully off Vercel
 **Repo**: https://github.com/gies-ai-experiments/illinihunt
-**Legacy Supabase Project**: `catzwowmxluzwbhdyhnf` — **gone.** Hostname is NXDOMAIN from three public resolvers and both stored access tokens 401 (checked 2026-08-23). Data migration is reconciled and complete: 34 projects / 99 votes match the counts verified at migration time, all 34 predate the cutover, and all 23 image URLs are on Azure Blob with zero Supabase URLs left. Azure Postgres is now the **sole copy**. See #93.
+**Legacy Supabase Project**: `catzwowmxluzwbhdyhnf` — **not in the dashboard project list** (Vishal checked 2026-08-23; his other projects appear there, paused). Both stored access tokens 401. ⚠️ **DNS proves nothing here**: paused Supabase projects also return NXDOMAIN — verified against four of Vishal's own paused projects, all NXDOMAIN, same as a made-up ref. Deleted-vs-paused-in-another-org is still unconfirmed; a fresh personal access token (`GET /v1/projects` lists across all orgs) would settle it. Data migration is reconciled and complete: 34 projects / 99 votes match the counts verified at migration time, all 34 predate the cutover, and all 23 image URLs are on Azure Blob with zero Supabase URLs left. Azure Postgres is now the **sole copy**. See #93.
 **Stack**: React 18 + TypeScript + **Azure App Service API** (`illinihunt.azurewebsites.net/api`) + **Entra ID (MSAL) auth** + **Azure Static Web Apps** frontend (migrating off Vercel) + Cloudflare DNS
 
 > ### ⚠️ The deployed code is on `azure-migration`, not `main`
@@ -66,7 +66,7 @@ npm run lint         # Code quality check
 
 ## Current Focus
 - [x] **Azure frontend cutover COMPLETE (2026-06-09)** — apex + `www` both serve from Azure Static Web Apps (`illinihunt-dev`, RG `DL_ResourceGroup_01`, DNS-only CNAMEs), fully off Vercel. Backend on Azure App Service API (`illinihunt.azurewebsites.net`) + Entra auth; no Supabase calls remain. Auth confirmed single-tenant UIUC + `@illinois.edu` (not a regression).
-- [x] **Supabase decommission / data reconcile — issue #93** (taken back from Keshav 2026-08-23). The "Azure 24 vs Supabase ~34" blocker was a **pagination artefact**: `GET /api/projects` defaults to `limit=24` (`api/src/routes/projects.ts:15`), so the June check read the page size — `total` was 34 all along. Reconcile: projects 34=34, votes 99=99, users 73→75 (+2 signups, no loss); all 34 projects predate the cutover; 23/23 images on Azure Blob, 0 Supabase URLs. The Supabase project is already gone, so the planned backup is **not recoverable** — this reconcile is the only completeness evidence there will be.
+- [x] **Supabase decommission / data reconcile — issue #93** (taken back from Keshav 2026-08-23). The "Azure 24 vs Supabase ~34" blocker was a **pagination artefact**: `GET /api/projects` defaults to `limit=24` (`api/src/routes/projects.ts:15`), so the June check read the page size — `total` was 34 all along. Reconcile: projects 34=34, votes 99=99, users 73→75 (+2 signups, no loss); all 34 projects predate the cutover; 23/23 images on Azure Blob, 0 Supabase URLs. The Supabase project does not appear in the dashboard, so the planned pre-delete backup probably cannot be taken — but see the caveat above: this is **not** confirmed deleted, and if it turns out to be paused in another org the backup is still possible.
 - [ ] **Sole-copy backup posture** (follow-on from #93): Azure Postgres `dl-postgresqlserver-01` has 35-day PITR but **geo-redundant backup Disabled** and no HA, and it is now the only copy of the student data. Geo-redundancy cannot be retrofitted to an existing Flexible Server → set up a scheduled logical `pg_dump` to Blob.
 - [ ] **Verify the submit flow end-to-end before semester traffic.** No user-generated content since 2026-05-11 — zero projects and zero comments since the June cutover — so the Azure/Entra submission path has never been exercised by a real user. Plausibly just a dormant summer, but worth an authenticated test now rather than after students arrive.
 - [ ] **Backend hardening — issue #98**: Key Vault for `DATABASE_URL`/secret conn strings; drop `localhost:5173` from prod CORS; optional UUID guards on other `:id` routes; optional **server-side `@illinois.edu` enforcement** (single-tenant admits B2B guests whose UPN isn't @illinois.edu — client gate alone wouldn't stop a direct API call; tenant + audience *are* enforced server-side).
@@ -117,14 +117,17 @@ npm run lint         # Code quality check
 - **#93 taken back from Keshav and reconciled.** The 24-vs-34 blocker was a pagination
   artefact (`GET /api/projects` defaults to `limit=24`; `total` was 34 all along). Projects
   34=34 and votes 99=99 against the counts verified at migration time, all 34 predate the
-  cutover, 23/23 images on Azure Blob with zero Supabase URLs. The Supabase project itself is
-  **gone** — NXDOMAIN from three resolvers, both stored tokens 401 — so the planned pre-delete
-  backup can never be taken; this reconcile is the only completeness evidence there will be.
+  cutover, 23/23 images on Azure Blob with zero Supabase URLs. The Supabase project is absent
+  from the dashboard project list and both stored tokens are 401. **Correction:** I first read
+  NXDOMAIN as proof of deletion — it is not. Four of Vishal's own *paused* projects return
+  NXDOMAIN too, so paused and deleted are indistinguishable by DNS; the control I ran (a
+  made-up ref) was the wrong reference class. Deleted-vs-paused remains open.
   Stale Supabase credentials removed from `.env.local` and `~/.env` (backup in
   `~/.local/share/illinihunt-env-backup-2026-08-23/`), and the dead `npx supabase` commands in
   CLAUDE.md/AGENTS.md replaced with the Prisma equivalents.
-- Next: (1) **confirm in the Supabase dashboard** that `catzwowmxluzwbhdyhnf` is deleted, then
-  close **#93**; (2) close **#95** (email-leak fix deployed and verified); (3) **sole-copy
+- Next: (1) settle deleted-vs-paused for `catzwowmxluzwbhdyhnf` — check the dashboard's **other
+  organizations**, or issue a personal access token so `GET /v1/projects` can list across orgs;
+  if it is merely paused, **take the backup before anything else**. Then close **#93**; (2) close **#95** (email-leak fix deployed and verified); (3) **sole-copy
   backup** — Azure Postgres is now the only copy and has no geo-redundancy; (4) **exercise the
   submit flow** before semester traffic (no user content since 2026-05-11); (5) backend
   hardening **#98**; (6) the `staging` slot 503s — harmless, dead weight.
