@@ -10,6 +10,20 @@
 **Legacy Supabase Project**: `catzwowmxluzwbhdyhnf` (deployed app no longer calls it — historical-data migration may still be pending, issue #93)
 **Stack**: React 18 + TypeScript + **Azure App Service API** (`illinihunt.azurewebsites.net/api`) + **Entra ID (MSAL) auth** + **Azure Static Web Apps** frontend (migrating off Vercel) + Cloudflare DNS
 
+> ### ⚠️ The deployed code is on `azure-migration`, not `main`
+>
+> **`main` is not deployed and does not contain the live frontend.** Azure Static Web Apps
+> `illinihunt-dev` builds from **`azure-migration`**; `main`'s `src/` is the pre-migration
+> **Supabase** frontend (last touched 2026-05-10) and the `api/` directory does not exist here at
+> all. Verified 2026-08-23 via
+> `az staticwebapp show -n illinihunt-dev -g DL_ResourceGroup_01 --query branch`.
+>
+> Pushing to `main` is *safe* (the deploy workflows live only on `azure-migration`), but reading
+> `main` to understand the running system will mislead you. **Work on `azure-migration`, and read
+> its CLAUDE.md** — it carries the deploy runbook (container→ACR for the API, SWA for the
+> frontend), the rollback image tag, and the constraints that cost this session three failed
+> deploys.
+
 > **Migration (2026-06-08, frontend cutover complete):** Frontend Vercel → Azure Static Web Apps (`polite-desert-0406a5c10.7.azurestaticapps.net`, RG `DL_ResourceGroup_01`, SWA `illinihunt-dev`); backend Supabase → Azure App Service (`illinihunt.azurewebsites.net/api`, App `illinihunt`) + Entra ID. **Both apex and `www` now serve from Azure** (Cloudflare DNS-only CNAMEs → SWA, valid Azure-managed certs); fully off Vercel. Deployed app calls the Azure API + Entra; **zero Supabase references remain**. Auth is single-tenant UIUC + `@illinois.edu` (verified, not a regression). **Still stale:** deep architecture/setup docs below still describe the old Vercel+Supabase stack — don't trust per-doc Vercel/Supabase references. Remaining backend hardening tracked in issue #98; apex↔www canonical redirect is an open minor item (SWA has no native host-based redirect).
 
 ## Quick Setup
@@ -50,12 +64,15 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
 
 ## Current Focus
 - [x] **Azure frontend cutover COMPLETE (2026-06-09)** — apex + `www` both serve from Azure Static Web Apps (`illinihunt-dev`, RG `DL_ResourceGroup_01`, DNS-only CNAMEs), fully off Vercel. Backend on Azure App Service API (`illinihunt.azurewebsites.net`) + Entra auth; no Supabase calls remain. Auth confirmed single-tenant UIUC + `@illinois.edu` (not a regression).
-- [ ] **Azure backend data migration + Supabase decommission** — issue #93 (keshavdalmia10, handling). App runs on Azure; remaining: confirm all history reached Azure Postgres (Azure shows 24 active projects vs Supabase ~34 total — reconcile), then **backup → pause → delete-later** the Supabase project `catzwowmxluzwbhdyhnf` (decision: not a hard-delete; plan + stale-DB-password finding documented in #93 comment). Local `.env.local` Supabase DB password is stale (rotated).
+- [ ] **Azure backend data migration + Supabase decommission** — issue #93 (keshavdalmia10, handling — **no activity since 2026-06-09**, chase or take it back). App runs on Azure. The "Azure 24 vs Supabase ~34" reconcile is **resolved**: `GET /api/stats` reported 34 active projects on 2026-08-23. Remaining: **backup → pause → delete-later** the Supabase project `catzwowmxluzwbhdyhnf` (decision: not a hard-delete; plan + stale-DB-password finding documented in #93 comment). Local `.env.local` Supabase DB password is stale (rotated).
 - [ ] **Backend hardening — issue #98**: Key Vault for `DATABASE_URL`/secret conn strings; drop `localhost:5173` from prod CORS; optional UUID guards on other `:id` routes; optional **server-side `@illinois.edu` enforcement** (single-tenant admits B2B guests whose UPN isn't @illinois.edu — client gate alone wouldn't stop a direct API call; tenant + audience *are* enforced server-side).
 - [ ] Canonical-host redirect apex↔www — both serve directly now (old apex→www 307 is gone); SWA has no native host-based redirect. Minor.
 - [ ] Sweep deep docs (README, MENTAL_MODEL, `docs/setup/*`) off Vercel+Supabase language now that the migration is complete.
-- [ ] **Manual:** remove the stray `agent-infra` crontab line (`crontab -r`) — added in error then reverted; the GitHub Actions cloudflare-backup CI runs fine, so the local cron is redundant. Couldn't remove it from automation (crontab spool not writable).
+- [ ] **Manual:** remove the stray `cloudflare-backup-cron.sh` crontab line — the GitHub Actions backup runs fine, so it is redundant. ⚠️ **Not `crontab -r`** (that deletes the whole crontab — there are four jobs). Use:
+  `crontab -l | grep -v cloudflare-backup-cron | crontab -`
 - [ ] Likely moot post-migration (revisit after Supabase decommission): remaining Supabase Security Advisor items; Supabase secrets rotation; troubleshooting banner (PR #92, lives on old Vercel build).
+- [x] **Agent readiness (2026-08-23)** — is-agentic 43 → 89; real 404s, server-rendered content, `llms.txt` + `openapi.json`, trust-anchor pages. Remaining checks are either infeasible on SWA (`Accept:` content negotiation) or need an npm CLI publish.
+- [ ] **Close #95** — the anonymous email leak is fixed and deployed; the issue is still open.
 - [ ] Testing framework
 
 ## Roadmap
@@ -64,18 +81,40 @@ mcp__supabase__apply_migration({ project_id: "catzwowmxluzwbhdyhnf", name: "..."
 - [x] Admin moderation tools
 - [x] Project submission flow overhaul (PRs #78–#92): image upload reliability + full Sentry observability stack + funnel instrumentation
 - [x] Azure frontend cutover (apex + www → Static Web Apps; backend on App Service + Entra; off Vercel/Supabase) — 2026-06-09
+- [x] Agent readiness / AI-agent discoverability — is-agentic 43 → 89 (2026-08-23)
 - [ ] Azure backend data migration + Supabase decommission (issue #93)
 - [ ] Testing framework
 - [ ] See: [Improvement Roadmap](docs/IMPROVEMENT_ROADMAP.md) for full details
 
 ## Session Log
-### 2026-06-09
-- Completed: **Full Vercel/Supabase → Azure frontend cutover + fixed an unauth API crash.**
-  - **DNS (Cloudflare via API):** added apex Azure-ownership TXT; cut apex `illinihunt.org` → DNS-only CNAME → Azure SWA `polite-desert-0406a5c10.7.azurestaticapps.net` (deleted Vercel A). Then registered `www` as SWA custom domain via `az` (TXT-token validation `_al9f87...`), waited for Azure to issue the cert *while www still served Vercel* (zero-downtime), verified valid cert, then flipped `www` CNAME → Azure (DNS-only) and removed the TXT. Both hosts live on Azure, valid TLS; DNS-only bypasses the `illinihunt-reverse-proxy` worker. Closed **#96**.
-  - **Verified the backend from the live bundle:** deployed app calls Azure App Service `illinihunt.azurewebsites.net/api` + Entra (MSAL); **zero Supabase refs**. Auth is single-tenant UIUC (`AzureADMyOrg`) + `@illinois.edu` — *not* a regression (the `/common` I first flagged was an MSAL library constant). Checked App Service config: Easy Auth off, tenant+audience enforced server-side, no `@illinois.edu` env gate; `DATABASE_URL` plaintext + `localhost:5173` in prod CORS → filed hardening **#98**.
-  - **API crash fix (PR #97, merged + deployed):** `GET /api/users/<non-uuid>` (e.g. `/me` falling through to `/:id`) hit `prisma.users.findUnique` on a UUID column → P2023; Express 4 doesn't route async rejections to errorHandler → Node 22 process exit = unauth DoS. Fix: `express-async-errors` + UUID guards. Codex-reviewed clean; deployed via ACR; verified `/me`→404 and server survives.
-  - **Infra/docs:** committed migration-state docs to illinihunt `main`; updated `~/.claude/references/cloudflare-illinihunt.md`. Added a complete two-token Cloudflare snapshot (`agent-infra/cloudflare-snapshots/2026-06-09`) capturing migration-day state. (Briefly misdiagnosed the backup CI as dead from a stale clone and set up a redundant local cron — reverted it; the GitHub Actions weekly backup runs fine. One stray crontab line still needs manual `crontab -r`.)
-- Next: (1) **Keshav** handles Supabase backup→pause→delete-later (#93; local DB password stale, reconcile Azure 24 vs Supabase ~34 first — plan in #93 comment); (2) backend hardening (#98); (3) sweep deep docs off Vercel+Supabase; (4) decide apex↔www canonical redirect; (5) **manual cleanup**: `crontab -r` to drop the stray redundant cron line (couldn't remove from automation).
+### 2026-08-23 — agent readiness (is-agentic 43 → 89) + closed an anonymous PII leak
+- **Scored the site with is-agentic.com and fixed what it found: 43 → 89/100** ("agents are
+  likely to struggle" → "strong technical baseline"), 12 checks flipped. Real HTTP 404s (an
+  explicit 18-route table replaced `navigationFallback`, which answered *every* unknown path
+  with 200 + app shell); server-rendered homepage content + JSON-LD; `llms.txt`, `openapi.json`
+  (12 endpoints, every shape replayed against the live API), `/.well-known/api-catalog`;
+  server-rendered `/about` `/contact` `/privacy` `/docs` `/developers` with `.md` twins.
+- **`GET /api/users/:id` was handing @illinois.edu addresses to anonymous callers** — no auth,
+  and user ids come out of `GET /api/projects` (8/8 probed ids returned one). That is issue #95,
+  which survived the Supabase→Azure migration into the Express API. Fixed and **deployed**;
+  0/10 profiles leak now. Covered by a class-level test that fails if *any* unauthenticated
+  handler mentions `email`.
+- **The API had no working deploy path for ten weeks.** On 2026-06-09 a code-based experiment
+  overwrote the container build-and-push workflow; the app config was never moved. Every
+  `api/**` push since then went to a `staging` slot nothing swaps in, while production kept
+  serving the 2026-06-09 image. Production is DOCKER and the slot is NODE|22-lts, so the swap
+  would have *replaced production's container config* — caught by verifying staging before
+  touching production. Container workflow restored.
+- Deploy reality, now documented on `azure-migration`: **SWA deploys from `azure-migration`, not
+  `main`** (`main` still holds the pre-migration Supabase frontend). A push to `main` is
+  harmless — the SWA workflow has never existed there.
+- Verification: `scripts/verify-agentic.sh <host>` on `azure-migration` — 58 live assertions,
+  all passing.
+- Next: (1) close **#95** (fix is deployed and verified — needs a comment + close); (2) backend
+  hardening **#98**; (3) **#93** Supabase decommission has had no movement since 2026-06-09 —
+  chase Keshav or take it back; note the "Azure 24 vs Supabase ~34" reconcile is resolved, the
+  Azure API now reports 34 active projects; (4) optional: publish a CLI (last is-agentic check
+  worth chasing); (5) the `staging` slot 503s — harmless, but dead weight.
 
 *Older entries archived to `docs/session-archive.md`.*
 
