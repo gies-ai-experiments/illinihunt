@@ -15,9 +15,16 @@
 > `illinihunt.org` / `www.illinihunt.org` serve from it. `main` still holds the pre-migration
 > **Supabase** frontend (last `src/` commit 2026-05-10) and has diverged.
 >
-> `azure-static-web-apps.yml` triggers on pushes to **both** `main` and `azure-migration`, so a
-> routine push to `main` would deploy the old Supabase build over production. Verified
-> 2026-08-23 (`az staticwebapp show -n illinihunt-dev -g DL_ResourceGroup_01 --query branch`).
+> Verified 2026-08-23:
+> `az staticwebapp show -n illinihunt-dev -g DL_ResourceGroup_01 --query branch` → `azure-migration`.
+>
+> This file's `branches:` list names `main` too, but that is **dead config, not a hazard**:
+> `azure-static-web-apps.yml` exists only on this branch and has never been on `main`
+> (`git log main -- .github/workflows/azure-static-web-apps.yml` is empty), and `push` events use
+> the workflow files at the pushed ref. So a push to `main` triggers nothing and cannot deploy
+> its stale Supabase frontend. If this branch is ever merged into `main`, the merge carries the
+> migrated frontend along with the workflow, so deploying from `main` would then be correct —
+> but at that point pick *one* deploy branch, or the two will race on the same SWA.
 >
 > **The API deploys as a CONTAINER — not a slot swap.** Production `illinihunt` runs
 > `DOCKER|illinihuntdevacr.azurecr.io/illinihunt-api:latest`. `azure-webapp-api.yml` builds
